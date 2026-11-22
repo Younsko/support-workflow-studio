@@ -1115,3 +1115,74 @@ def test_n1_customer_reply_can_pass_without_internal_citation_or_incident_discla
     assert workflow._draft_hard_fail(case, natural_reply, evidence) is False
     assert workflow._draft_hard_fail(case, natural_reply + " Visit https://invented.example", evidence) is True
     assert workflow._draft_hard_fail(case, "Please send your password.", evidence) is True
+
+def test_approved_ticket_reply_publishes_only_after_approval_and_once(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    configure_test_knowledge(monkeypatch)
+    monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", "synthetic-token")
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "1")
+    monkeypatch.setenv("JSM_QUEUE_ID", "2")
+    CASES["DEMO-84"] = CaseRecord(
+        id="DEMO-84",
+        external_key="DEMO-84",
+        source="jira-service-management",
+        title="Synthetic VPN disconnect",
+        requester="Synthetic Requester",
+        channel="Jira Service Management",
+        created_at="2026-11-22T09:00:00Z",
+        priority="High",
+        category="Connectivity",
+        status="Open",
+        body="The VPN disconnected during a synthetic support call.",
+        impact="Synthetic single-user example",
+    )
+
+    ticket_details = {
+        "summary": "Synthetic VPN disconnect",
+        "description": "The VPN disconnected during a synthetic support call.",
+    }
+    published: list[tuple[str, str]] = []
+
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return dict(ticket_details)
+
+        async def publish_public_reply(self, issue_key, body):
+            published.append((issue_key, body))
+            return {"id": "synthetic-comment-2", "public": "True"}
+
+    from app import main
+
+    monkeypatch.setattr(
+        main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter()
+    )
+    run = client.post(
+        "/api/workflows", json={"case_id": "DEMO-84", "candidate_count": 1}
+    ).json()
+    reviewed_draft = run["draft"]
+
+    early_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert early_publish.status_code == 409
+    assert published == []
+
+    approval = client.post(
+        f"/api/workflows/{run['id']}/decision",
+        json={"decision": "approve", "expected_version": run["approval_version"]},
+    )
+    assert approval.status_code == 200
+    assert approval.json()["status"] == "approved"
+
+    publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert publish.status_code == 200
+    assert publish.json() == {
+        "published": True,
+        "comment_id": "synthetic-comment-2",
+        "public": True,
+    }
+    assert published == [("DEMO-84", reviewed_draft)]
+
+    duplicate_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert duplicate_publish.status_code == 409
+    assert len(published) == 1
