@@ -20,6 +20,10 @@ The optional `PRIVATE_LOCAL_MODE=true` guard restricts a local copy to a local O
 - Session metrics derived from actual cases and workflow runs: open requests, live-model runs, median triage generation time, quality-gate outcomes, reviewer approvals/edits/rejections, and published replies.
 - A read-only product-signal panel that groups multiple completed triages by their inferred category, links back to the source requests, and can copy a human-review escalation brief without creating an engineering ticket.
 
+## Motion demo
+
+[Watch the 30-second workflow animation](motion_demo/support-workflow-demo.mp4). The video is generated entirely by [the renderer](motion_demo/render.py), with synthetic ticket text, procedural sound, and no external assets or model calls. It shows intake, approved guidance, plan critique and revision, independent verification, specialist review, human approval, a separate publish action, and the integration boundaries.
+
 ## Run locally
 
 Requirements: Python 3.11+ and Node.js 20+.

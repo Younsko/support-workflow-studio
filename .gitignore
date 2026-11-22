@@ -12,6 +12,8 @@ dist/
 *.tsbuildinfo
 backend/app/static/
 .local/
+motion_demo/.video-only.mp4
+motion_demo/.procedural-audio.wav
 .DS_Store
 
 # Local-only exports from real support systems; never publish these with source.
