@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import os
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from typing import Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -9,15 +14,27 @@ import httpx
 from .schemas import CaseRecord
 
 
-class JiraConfigurationError(RuntimeError):
+class ITSMConfigurationError(RuntimeError):
     pass
 
 
-class JiraRequestError(RuntimeError):
+class ITSMRequestError(RuntimeError):
     pass
 
 
-class JiraOutcomeUnknown(JiraRequestError):
+class ITSMOutcomeUnknown(ITSMRequestError):
+    """A provider may have accepted a write without confirming its outcome."""
+
+
+class JiraConfigurationError(ITSMConfigurationError):
+    pass
+
+
+class JiraRequestError(ITSMRequestError):
+    pass
+
+
+class JiraOutcomeUnknown(JiraRequestError, ITSMOutcomeUnknown):
     """Jira may have accepted a write, so the caller must not retry blindly."""
 
 
@@ -25,7 +42,7 @@ class JiraOutcomeUnknown(JiraRequestError):
 class JiraConfig:
     base_url: str
     email: str
-    api_token: str
+    api_token: str = field(repr=False)
     service_desk_id: str
     queue_id: str
 
@@ -42,14 +59,18 @@ class JiraConfig:
     @property
     def configured(self) -> bool:
         return bool(
-            self.base_url
-            and self.email
-            and self.api_token
+            self.auth_configured
             and self.service_desk_id
             and self.queue_id
         )
 
-    def validate(self) -> None:
+    @property
+    def auth_configured(self) -> bool:
+        return bool(self.base_url and self.email and self.api_token)
+
+    def validate(self, require_queue_ids: bool = True) -> None:
+        if not self.auth_configured:
+            raise JiraConfigurationError("Jira site, account email, and API token are required.")
         parsed = urlparse(self.base_url)
         host = (parsed.hostname or "").lower()
         try:
@@ -72,7 +93,9 @@ class JiraConfig:
             raise JiraConfigurationError(
                 "This connector currently supports Jira Cloud sites on atlassian.net only."
             )
-        if not self.service_desk_id.isdigit() or not self.queue_id.isdigit():
+        if require_queue_ids and (
+            not self.service_desk_id.isdigit() or not self.queue_id.isdigit()
+        ):
             raise JiraConfigurationError(
                 "Service desk ID and queue ID must be numeric values from Jira."
             )
@@ -100,8 +123,10 @@ def _extract_text(value: object) -> str:
     return ""
 
 
-def _http_client(config: JiraConfig) -> httpx.AsyncClient:
-    config.validate()
+def _http_client(
+    config: JiraConfig, require_queue_ids: bool = True
+) -> httpx.AsyncClient:
+    config.validate(require_queue_ids=require_queue_ids)
     return httpx.AsyncClient(
         base_url=config.base_url,
         auth=(config.email, config.api_token),
@@ -109,6 +134,151 @@ def _http_client(config: JiraConfig) -> httpx.AsyncClient:
         timeout=20,
         follow_redirects=False,
     )
+
+
+def _retry_after_delay(response: object, max_wait: float = 5.0) -> float | None:
+    headers = getattr(response, "headers", {})
+    retry_after = str(
+        headers.get("retry-after", headers.get("Retry-After", ""))
+    ).strip()
+    if not retry_after:
+        return None
+    try:
+        delay = float(retry_after)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(retry_after)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            delay = (retry_at - datetime.now(UTC)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return None
+    if delay < 0 or delay > max_wait:
+        return None
+    jitter_limit = min(0.25, max_wait - delay)
+    return delay + random.uniform(0.0, jitter_limit)
+
+
+async def _get_with_rate_limit_retry(
+    client: httpx.AsyncClient, path: str, params: dict[str, int] | None = None
+) -> httpx.Response:
+    """Retry idempotent reads at most twice when Jira returns HTTP 429."""
+    for attempt in range(3):
+        response = (
+            await client.get(path)
+            if params is None
+            else await client.get(path, params=params)
+        )
+        if getattr(response, "status_code", 200) != 429 or attempt == 2:
+            return response
+        delay = _retry_after_delay(response)
+        if delay is None:
+            return response
+        await asyncio.sleep(delay)
+    raise AssertionError("Unreachable Jira read retry state.")
+
+
+async def list_service_desks(config: JiraConfig) -> list[dict[str, str]]:
+    """List at most 200 service desks the authenticated user can access."""
+    results: list[dict[str, str]] = []
+    try:
+        async with _http_client(config, require_queue_ids=False) as client:
+            for start in range(0, 200, 50):
+                response = await _get_with_rate_limit_retry(
+                    client,
+                    "/rest/servicedeskapi/servicedesk",
+                    {"start": start, "limit": 50},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict) or not isinstance(
+                    payload.get("values"), list
+                ):
+                    raise JiraRequestError(
+                        "Jira service desk response has an unsupported shape."
+                    )
+                values = payload["values"]
+                for item in values:
+                    if not isinstance(item, dict):
+                        continue
+                    desk_id = str(item.get("id", "")).strip()
+                    if not desk_id.isdigit():
+                        continue
+                    results.append(
+                        {
+                            "id": desk_id,
+                            "name": str(
+                                item.get("projectName") or item.get("projectKey") or desk_id
+                            )[:120],
+                            "key": str(item.get("projectKey") or "")[:40],
+                        }
+                    )
+                if payload.get("isLastPage") is True or len(values) < 50:
+                    break
+    except JiraRequestError:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise JiraRequestError(
+            f"Jira service desk discovery failed (HTTP {exc.response.status_code})."
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise JiraRequestError(
+            f"Jira service desk discovery failed: {type(exc).__name__}"
+        ) from exc
+    return results
+
+
+async def list_service_desk_queues(
+    config: JiraConfig, service_desk_id: str
+) -> list[dict[str, str]]:
+    """List at most 200 queues in one selected service desk; never fetch counts."""
+    safe_id = service_desk_id.strip()
+    if not safe_id.isdigit():
+        raise JiraConfigurationError("Service desk ID must be numeric.")
+    results: list[dict[str, str]] = []
+    path = f"/rest/servicedeskapi/servicedesk/{safe_id}/queue"
+    try:
+        async with _http_client(config, require_queue_ids=False) as client:
+            for start in range(0, 200, 50):
+                response = await _get_with_rate_limit_retry(
+                    client, path, {"start": start, "limit": 50}
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict) or not isinstance(
+                    payload.get("values"), list
+                ):
+                    raise JiraRequestError(
+                        "Jira queue discovery response has an unsupported shape."
+                    )
+                values = payload["values"]
+                for item in values:
+                    if not isinstance(item, dict):
+                        continue
+                    queue_id = str(item.get("id", "")).strip()
+                    if not queue_id.isdigit():
+                        continue
+                    results.append(
+                        {
+                            "id": queue_id,
+                            "name": str(item.get("name") or queue_id)[:120],
+                        }
+                    )
+                if payload.get("isLastPage") is True or len(values) < 50:
+                    break
+    except JiraConfigurationError:
+        raise
+    except JiraRequestError:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise JiraRequestError(
+            f"Jira queue discovery failed (HTTP {exc.response.status_code})."
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise JiraRequestError(
+            f"Jira queue discovery failed: {type(exc).__name__}"
+        ) from exc
+    return results
 
 
 async def list_queue_cases(
@@ -123,11 +293,15 @@ async def list_queue_cases(
     path = f"/rest/servicedeskapi/servicedesk/{config.service_desk_id}/queue/{config.queue_id}/issue"
     try:
         async with _http_client(config) as client:
-            response = await client.get(
-                path, params={"start": safe_start, "limit": safe_limit}
+            response = await _get_with_rate_limit_retry(
+                client, path, {"start": safe_start, "limit": safe_limit}
             )
             response.raise_for_status()
             payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        raise JiraRequestError(
+            f"Jira queue read failed (HTTP {exc.response.status_code})."
+        ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise JiraRequestError(f"Jira queue read failed: {type(exc).__name__}") from exc
 
@@ -190,9 +364,15 @@ async def get_request_details(config: JiraConfig, issue_key: str) -> dict[str, o
         raise JiraConfigurationError("Ticket key contains unsupported characters.")
     try:
         async with _http_client(config) as client:
-            response = await client.get(f"/rest/servicedeskapi/request/{issue_key}")
+            response = await _get_with_rate_limit_retry(
+                client, f"/rest/servicedeskapi/request/{issue_key}"
+            )
             response.raise_for_status()
             payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        raise JiraRequestError(
+            f"Jira ticket read failed (HTTP {exc.response.status_code})."
+        ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise JiraRequestError(
             f"Jira ticket read failed: {type(exc).__name__}"
@@ -284,3 +464,65 @@ async def create_public_comment(
             "Jira did not confirm the comment ID and public visibility; inspect the request before retrying."
         )
     return {"id": str(payload["id"]), "public": "True"}
+
+
+class ITSMAdapter(Protocol):
+    """Provider contract consumed by the support workflow.
+
+    Implementations must keep reads bounded, refresh the exact request before a
+    write, and return a confirmed public-comment ID. Unknown write outcomes must
+    raise :class:`ITSMOutcomeUnknown` so callers never retry a possibly
+    accepted write blindly.
+    """
+
+    provider_id: str
+    capabilities: frozenset[str]
+
+    async def list_workspaces(self) -> list[dict[str, str]]: ...
+
+    async def list_queues(self, workspace_id: str) -> list[dict[str, str]]: ...
+
+    async def validate_connection(self) -> int: ...
+
+    async def list_queue_cases(self, limit: int = 50, start: int = 0) -> list[CaseRecord]: ...
+
+    async def get_request_details(self, issue_key: str) -> dict[str, object]: ...
+
+    async def publish_public_reply(self, issue_key: str, body: str) -> dict[str, str]: ...
+
+
+@dataclass(frozen=True)
+class JiraServiceManagementAdapter:
+    """Jira Cloud implementation of the normalized :class:`ITSMAdapter`."""
+
+    config: JiraConfig
+    provider_id = "jira-service-management"
+    capabilities = frozenset({"queue_read", "request_refresh", "public_reply"})
+
+    async def list_workspaces(self) -> list[dict[str, str]]:
+        return await list_service_desks(self.config)
+
+    async def list_queues(self, workspace_id: str) -> list[dict[str, str]]:
+        return await list_service_desk_queues(self.config, workspace_id)
+
+    async def validate_connection(self) -> int:
+        """Verify credentials and queue access with a single bounded read."""
+        return len(await list_queue_cases(self.config, limit=1))
+
+    async def list_queue_cases(self, limit: int = 50, start: int = 0) -> list[CaseRecord]:
+        return await list_queue_cases(self.config, limit=limit, start=start)
+
+    async def get_request_details(self, issue_key: str) -> dict[str, object]:
+        return await get_request_details(self.config, issue_key)
+
+    async def publish_public_reply(self, issue_key: str, body: str) -> dict[str, str]:
+        return await create_public_comment(self.config, issue_key, body)
+
+
+def create_itsm_adapter(
+    provider_id: str, config: JiraConfig | None = None
+) -> ITSMAdapter:
+    """Construct an implemented provider; unsupported providers fail closed."""
+    if provider_id == JiraServiceManagementAdapter.provider_id:
+        return JiraServiceManagementAdapter(config or JiraConfig.from_env())
+    raise JiraConfigurationError(f"ITSM provider is not implemented: {provider_id}")

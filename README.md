@@ -52,6 +52,8 @@ npm --prefix frontend run build
 
 Open **http://127.0.0.1:8000**, select **SUP-4821 — VPN disconnects during customer calls**, and choose **Run workflow**. Look for `KB-104` in the evidence, then edit the proposed reply and choose **Save edit & re-review** to see how a change goes back through verification. [Guided walkthrough](docs/demo-guide.md)
 
+To connect a Jira Service Management Cloud queue, open **Setup** in the left navigation. Enter the Jira site, account email and API token, then discover and choose a service desk and queue. The app checks queue access before saving. Select a local knowledge folder that contains the approved-source manifest, and review the automatic triage and escalation defaults. The token is stored in the local ignored `.env` file and is never sent back to the browser. [Connector setup](docs/connector-setup.md)
+
 ## Inside a run
 
 | Stage | What you can inspect |
@@ -68,7 +70,7 @@ The timeline retains the evidence, findings, revisions, and decision for each ru
 
 - **Bundled demo** uses deterministic responses and review results. The React workbench and FastAPI share a local origin, and SQLite stores cases and decisions under `.local/`.
 - **Live inference** supports local Ollama, OpenAI-compatible endpoints, and Anthropic. Per-run call limits and timeouts are configurable. [Provider setup](docs/provider-setup.md)
-- **Jira Service Management Cloud** can poll an operator-selected queue. Triage uses a local guidance allowlist, and sending ticket content to an external model requires explicit opt-in. [Configuration example](.env.example) · [Data boundaries](docs/data-boundaries.md)
+- **Jira Service Management Cloud** can poll an operator-selected queue configured in the UI. Triage uses a local guidance allowlist, and sending ticket content to an external model requires explicit opt-in. [Connector setup](docs/connector-setup.md) · [Data boundaries](docs/data-boundaries.md)
 - **Private local mode** pairs loopback Ollama with manually entered cases. The prototype is designed for one local operator. Shared deployments and GitHub code changes are future work. [Production readiness](docs/production-readiness.md)
 
 ## Development
