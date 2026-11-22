@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+*.egg-info/
+*.tsbuildinfo
+backend/app/static/
+.local/
+.DS_Store
+
+# Local-only exports from real support systems; never publish these with source.
+**/private-data/
+**/real-ticket-data/
+**/ticket-exports/
+**/jsm-exports/

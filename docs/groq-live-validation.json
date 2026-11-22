@@ -1,0 +1,269 @@
+{
+  "http_status": 201,
+  "usage": {
+    "requests": 19,
+    "prompt_tokens": 10710,
+    "completion_tokens": 2055,
+    "total_tokens": 12765
+  },
+  "run": {
+    "id": "RUN-DCC49561",
+    "case_id": "SUP-4825",
+    "status": "awaiting_human",
+    "provider_mode": "live",
+    "model_name": "openai/gpt-oss-20b",
+    "started_at": "2026-11-22T18:14:13+00:00",
+    "elapsed_ms": 54558,
+    "source_snapshot_hash": "04a54ab6d5557b708013d5b92a6644ba33fb53316d13164433ab37ac1b6c49e5",
+    "approval_version": 0,
+    "score": 8.9,
+    "rounds": 2,
+    "revision_count": 1,
+    "human_edited": false,
+    "candidate_count": 1,
+    "category": "Password Reset",
+    "urgency": "Low",
+    "support_level": "N1",
+    "support_route_reason": "Routine access or documented how-to request",
+    "confidence": 0.88,
+    "evidence": [
+      {
+        "id": "KB-410",
+        "title": "Password reset self-service",
+        "excerpt": "For a routine password reset when the requester can still sign in, direct them to the organization's approved self-service account portal and its password-reset flow. Do not invent"
+      },
+      {
+        "id": "KB-104",
+        "title": "VPN connection checks",
+        "excerpt": "For a VPN connection issue, confirm the device has internet access, capture the exact error and timestamp, and check the approved VPN service status page. Do not ask the requester "
+      }
+    ],
+    "plan": [
+      "Confirm the requester can still sign in and has no current access interruption.",
+      "Instruct the requester to use the organization\u2019s approved self\u2011service account portal for password reset.",
+      "Do not provide any URLs, passwords, recovery codes, or one\u2011time codes.",
+      "If the portal is unavailable or returns an error, ask the requester to capture the exact error wording and timestamp.",
+      "Route the captured error and device details to the identity support team for further investigation.",
+      "Evidence cited:** KB-410."
+    ],
+    "plan_reviews": [
+      {
+        "round": 1,
+        "origin": "architect",
+        "critic_score": 10.0,
+        "score": 8.9,
+        "verdict": "revise",
+        "plan": [
+          "Confirm the requester can still sign in and has no current access interruption.",
+          "Instruct the requester to use the organization\u2019s approved self\u2011service account portal for password reset.",
+          "Do not provide any URLs, passwords, recovery codes, or one\u2011time codes.",
+          "If the portal is unavailable or returns an error, ask the requester to capture the exact error wording and timestamp.",
+          "Route the captured error and device details to the identity support team for further investigation.",
+          "(Optional) Verify that normal internet connectivity is available before attempting the portal reset."
+        ],
+        "findings": [
+          "Plan is fully grounded in approved evidence (KB-410).",
+          "Scope is safe: no sensitive data or instructions that could compromise security.",
+          "Escalation path is defined: route errors to identity support team.",
+          "Uncertainty is acknowledged: optional connectivity check and error capture.",
+          "Next step is useful: directs user to approved portal and provides fallback."
+        ],
+        "missing_checks": [],
+        "deterministic_findings": [
+          "The plan does not cite any supplied knowledge source ID."
+        ]
+      },
+      {
+        "round": 2,
+        "origin": "architect",
+        "critic_score": 10.0,
+        "score": 10.0,
+        "verdict": "pass",
+        "plan": [
+          "Confirm the requester can still sign in and has no current access interruption.",
+          "Instruct the requester to use the organization\u2019s approved self\u2011service account portal for password reset.",
+          "Do not provide any URLs, passwords, recovery codes, or one\u2011time codes.",
+          "If the portal is unavailable or returns an error, ask the requester to capture the exact error wording and timestamp.",
+          "Route the captured error and device details to the identity support team for further investigation.",
+          "Evidence cited:** KB-410."
+        ],
+        "findings": [],
+        "missing_checks": [],
+        "deterministic_findings": []
+      }
+    ],
+    "draft": "Hi Taylor,\n\nSince you\u2019re still able to sign in, you can reset your password through the organization\u2019s approved self\u2011service account portal. Follow the portal\u2019s password\u2011reset flow. If the portal is unavailable or shows an error, please note the exact error message and the time it occurred, and let us know. We\u2019ll forward that information to the identity support team for further assistance.\n\nThank you.",
+    "verifier_findings": [
+      "{\"findings\": []}"
+    ],
+    "reviewer_findings": [
+      {
+        "lane": "Technical correctness",
+        "score": 10.0,
+        "verdict": "Approved",
+        "findings": []
+      },
+      {
+        "lane": "Security & privacy",
+        "score": 10.0,
+        "verdict": "Approved",
+        "findings": []
+      },
+      {
+        "lane": "Customer clarity",
+        "score": 8.0,
+        "verdict": "Acceptable",
+        "findings": [
+          "The response is concise and directly addresses the user\u2019s request, but it could be slightly clearer by explicitly stating the next steps (e.g., \u201cclick the \u2018Forgot password\u2019 link on the login page\u201d or providing a generic URL placeholder if allowed).",
+          "The draft uses a polite tone and follows the policy by not requesting sensitive information."
+        ]
+      }
+    ],
+    "work_lanes": [
+      {
+        "lane": "Technical context",
+        "scope": "Analyze only reported behavior, reproduction clues, and matching approved guidance.",
+        "finding": "Direct the user to the organization's approved self\u2011service account portal for password reset.",
+        "evidence_ids": [
+          "KB-410"
+        ],
+        "unknowns": []
+      },
+      {
+        "lane": "Access and privacy",
+        "scope": "Analyze only access/security concerns and sensitive-data boundaries. Do not infer an incident.",
+        "finding": "The user is requesting password reset steps. According to KB-410, the correct response is to direct the user to the approved self\u2011service portal and not provide any password or sensitive information. No additional security or privacy concerns are identified.",
+        "evidence_ids": [
+          "KB-410"
+        ],
+        "unknowns": []
+      },
+      {
+        "lane": "Customer impact",
+        "scope": "Analyze only affected users, business impact, urgency clues, and escalation context.",
+        "finding": "User can still sign in; direct them to the approved self\u2011service password reset portal per KB\u2011410.",
+        "evidence_ids": [
+          "KB-410"
+        ],
+        "unknowns": []
+      }
+    ],
+    "council_options": [],
+    "stages": [
+      {
+        "id": "intake",
+        "label": "Intake & classification",
+        "status": "complete",
+        "detail": "Password Reset \u00b7 Low priority \u00b7 N1 suggested \u00b7 88% confidence",
+        "actor": "Triage agent",
+        "elapsed_ms": 540
+      },
+      {
+        "id": "evidence",
+        "label": "Knowledge retrieval",
+        "status": "complete",
+        "detail": "2 local source(s) matched",
+        "actor": "Retrieval",
+        "elapsed_ms": 22
+      },
+      {
+        "id": "investigation-lanes",
+        "label": "Parallel investigation lanes",
+        "status": "complete",
+        "detail": "Three bounded read-only lanes gathered findings independently; findings remain unverified until checked against cited evidence.",
+        "actor": "Technical context \u00b7 access/privacy \u00b7 customer impact",
+        "elapsed_ms": 900
+      },
+      {
+        "id": "design",
+        "label": "Architect \u2192 critic \u2192 revise",
+        "status": "complete",
+        "detail": "2 critic round(s) \u00b7 1 plan revision(s) \u00b7 final plan gate 10.0/10 \u00b7 reviewer has no write authority",
+        "actor": "Architect + fresh-context critic",
+        "elapsed_ms": 1250
+      },
+      {
+        "id": "build",
+        "label": "Isolated candidate lane(s)",
+        "status": "complete",
+        "detail": "1 candidate(s) failed deterministic grounding/safety checks; the safe evidence-grounded response template was selected",
+        "actor": "Response builder \u00b7 deterministic fallback",
+        "elapsed_ms": 650
+      },
+      {
+        "id": "verify",
+        "label": "Independent verifier",
+        "status": "complete",
+        "detail": "Fresh-context read-only verifier produced 1 finding(s); advisory only.",
+        "actor": "Verifier \u00b7 read-only",
+        "elapsed_ms": 710
+      },
+      {
+        "id": "review",
+        "label": "Specialist review lanes",
+        "status": "complete",
+        "detail": "Three independent, read-only scopes \u00b7 findings merged by workflow code",
+        "actor": "Correctness \u00b7 security \u00b7 clarity",
+        "elapsed_ms": 1200
+      },
+      {
+        "id": "draft-revision",
+        "label": "Bounded draft revision",
+        "status": "complete",
+        "detail": "One revision requested after a 8.7/10 review; final text must pass independent verification and the gate again.",
+        "actor": "Response builder \u00b7 review findings only",
+        "elapsed_ms": 500
+      },
+      {
+        "id": "verify-revision",
+        "label": "Independent verifier \u00b7 revised draft",
+        "status": "complete",
+        "detail": "Fresh-context read-only verifier produced 1 finding(s); advisory only.",
+        "actor": "Fresh-context verifier \u00b7 read-only",
+        "elapsed_ms": 710
+      },
+      {
+        "id": "review-revision",
+        "label": "Specialist review \u00b7 revised draft",
+        "status": "complete",
+        "detail": "Three independent review lanes scored the revised draft.",
+        "actor": "Correctness \u00b7 security \u00b7 clarity",
+        "elapsed_ms": 1200
+      },
+      {
+        "id": "gate",
+        "label": "Quality gate",
+        "status": "warning",
+        "detail": "8.9/10 \u00b7 revise or inspect findings before approval",
+        "actor": "Deterministic rubric + specialist findings",
+        "elapsed_ms": 8
+      },
+      {
+        "id": "human",
+        "label": "Human decision",
+        "status": "pending",
+        "detail": "Approve, edit, or reject the draft. No customer send is connected.",
+        "actor": "Support reviewer",
+        "elapsed_ms": 0
+      }
+    ],
+    "human_decision": null,
+    "ticket_comment_published": false,
+    "ticket_comment_id": null,
+    "ticket_comment_outcome": "not_started"
+  },
+  "ticket_run_link_verified": true,
+  "decision": "approval blocked by quality gate",
+  "metrics": {
+    "open_cases": 8,
+    "total_cases": 8,
+    "workflow_runs": 1,
+    "live_model_runs": 1,
+    "drafts_passing_gate": 0,
+    "reviewer_approved_runs": 0,
+    "reviewer_edited_runs": 0,
+    "reviewer_rejected_runs": 0,
+    "public_replies_published": 0,
+    "median_triage_seconds": 54.6
+  }
+}

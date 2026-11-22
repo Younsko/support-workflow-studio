@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "approved_sources": [
+    {
+      "path": "support-guidance.md",
+      "approval_status": "approved",
+      "owner_ref": "synthetic-test-owner",
+      "approved_at": "2026-11-22",
+      "approval_evidence_ref": "synthetic-fixture"
+    }
+  ]
+}
