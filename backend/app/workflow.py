@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import re
 import time
 import uuid
@@ -73,44 +74,65 @@ def _category(text: str) -> tuple[str, str, float]:
 def _support_level(text: str) -> tuple[str, str]:
     """Return a provisional support tier and the deterministic routing clue."""
     content = text.lower()
+
+    def configured_terms(name: str, defaults: tuple[str, ...]) -> tuple[str, ...]:
+        raw = os.getenv(name, "").strip()
+        additional = tuple(
+            term.strip().lower()[:80]
+            for term in re.split(r"[,;\n]", raw)[:40]
+            if term.strip()
+        )
+        # Operator phrases extend the built-in routing signals so configuring
+        # a local vocabulary cannot accidentally remove baseline safety cues.
+        return tuple(dict.fromkeys((*defaults, *additional)))
+
     if any(
         term in content
-        for term in (
-            "security incident",
-            "unexpected security prompt",
-            "recovery code",
-            "data breach",
-            "data loss",
-            "production outage",
-            "service unavailable",
-            "unauthorized access",
-            "phishing",
-            "all users",
-            "entire company",
+        for term in configured_terms(
+            "SUPPORT_N3_PLUS_KEYWORDS",
+            (
+                "security incident",
+                "unexpected security prompt",
+                "recovery code",
+                "data breach",
+                "data loss",
+                "production outage",
+                "service unavailable",
+                "unauthorized access",
+                "phishing",
+                "all users",
+                "entire company",
+            ),
         )
     ):
         return "N3+", "Reported security, data-loss, or broad service impact; immediate specialist review"
     if any(
         term in content
-        for term in (
-            "repeated",
-            "recurring",
-            "multiple users",
-            "several teammates",
-            "regression",
-            "crash",
-            "bug",
+        for term in configured_terms(
+            "SUPPORT_N3_KEYWORDS",
+            (
+                "repeated",
+                "recurring",
+                "multiple users",
+                "several teammates",
+                "regression",
+                "crash",
+                "bug",
+            ),
         )
     ):
         return "N3", "Reported recurrence, multiple affected users, or product behavior requiring engineering context"
     if any(
         term in content
-        for term in (
-            "how do i",
-            "how to",
-            "password reset",
-            "setup instructions",
-            "where can i",
+        for term in configured_terms(
+            "SUPPORT_N1_KEYWORDS",
+            (
+                "how do i",
+                "how to",
+                "password reset",
+                "setup instructions",
+                "where can i",
+            ),
         )
     ):
         return "N1", "Routine access or documented how-to request"

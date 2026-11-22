@@ -3,27 +3,29 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import os
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
 from urllib.parse import urlsplit
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key, unset_key
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
 from .fixtures import demo_cases
 from .itsm import (
+    ITSMConfigurationError,
+    ITSMOutcomeUnknown,
+    ITSMRequestError,
     JiraConfig,
-    JiraConfigurationError,
-    JiraOutcomeUnknown,
-    JiraRequestError,
-    create_public_comment,
-    get_request_details,
-    list_queue_cases,
+    create_itsm_adapter,
 )
 from .knowledge import knowledge_status
 from .providers import ProviderConfig, ProviderError
@@ -40,6 +42,29 @@ from .store import LocalStore, configured_store
 from .workflow import content_fingerprint, review_edited_draft, run_workflow
 
 load_dotenv()
+
+
+class SetupRequest(BaseModel):
+    jira_base_url: str = Field(default="", max_length=255)
+    jira_email: str = Field(default="", max_length=255)
+    jira_api_token: str = Field(default="", max_length=2000, repr=False)
+    jira_service_desk_id: str = Field(default="", max_length=40)
+    jira_queue_id: str = Field(default="", max_length=40)
+    knowledge_dir: str = Field(default="", max_length=2048)
+    auto_triage_new_tickets: bool = False
+    poll_interval_seconds: int = Field(default=60, ge=15, le=900)
+    max_auto_triage_per_poll: int = Field(default=5, ge=1, le=10)
+    n1_keywords: str = Field(default="", max_length=2000)
+    n3_plus_keywords: str = Field(default="", max_length=2000)
+    n3_keywords: str = Field(default="", max_length=2000)
+
+
+class JiraDiscoveryRequest(BaseModel):
+    jira_base_url: str = Field(max_length=255)
+    jira_email: str = Field(max_length=255)
+    jira_api_token: str = Field(default="", max_length=2000, repr=False)
+    service_desk_id: str = Field(default="", max_length=40)
+
 
 JIRA_MONITOR_STATE: dict[str, object] = {
     "enabled": False,
@@ -62,6 +87,40 @@ JIRA_AUTO_TRIAGE_BASELINE_AT: datetime | None = None
 JIRA_AUTO_TRIAGE_WAS_ENABLED = False
 WORKFLOW_LOCKS: dict[str, asyncio.Lock] = {}
 STATE_STORE: LocalStore | None = None
+SETUP_WRITE_LOCK = asyncio.Lock()
+
+
+def _persist_local_setup(
+    values: dict[str, str], api_token: str, remove_api_token: bool
+) -> None:
+    """Atomically update ignored local configuration, then apply it in-process."""
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix=".env.", suffix=".tmp", dir=env_path.parent, delete=False
+    ) as handle:
+        staged_path = Path(handle.name)
+    try:
+        if env_path.is_file():
+            shutil.copy2(env_path, staged_path)
+        for name, value in values.items():
+            set_key(str(staged_path), name, value, quote_mode="always")
+        if api_token:
+            set_key(str(staged_path), "JSM_API_TOKEN", api_token, quote_mode="always")
+        elif remove_api_token:
+            unset_key(str(staged_path), "JSM_API_TOKEN")
+        if os.name != "nt":
+            staged_path.chmod(0o600)
+        os.replace(staged_path, env_path)
+    except Exception:
+        staged_path.unlink(missing_ok=True)
+        raise
+
+    os.environ.update(values)
+    if api_token:
+        os.environ["JSM_API_TOKEN"] = api_token
+    elif remove_api_token:
+        os.environ.pop("JSM_API_TOKEN", None)
 
 
 def _save_case(case: CaseRecord) -> None:
@@ -184,6 +243,7 @@ async def _poll_jira_once() -> None:
     if not config.configured:
         JIRA_MONITOR_STATE.update(enabled=False, last_error=None)
         return
+    adapter = create_itsm_adapter("jira-service-management", config)
 
     auto_triage = _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS")
     async with JIRA_MONITOR_LOCK:
@@ -198,7 +258,7 @@ async def _poll_jira_once() -> None:
         maximum = 200
         page_cap_reached = False
         for start in range(0, maximum + page_size, page_size):
-            page = await list_queue_cases(config, limit=page_size, start=start)
+            page = await adapter.list_queue_cases(limit=page_size, start=start)
             if start == maximum:
                 page_cap_reached = bool(page)
                 break
@@ -303,9 +363,7 @@ async def _poll_jira_once() -> None:
                 _tag_local_case(case.id, "studio-triage-retry-pending", False)
                 continue
             try:
-                details = await get_request_details(
-                    config, case.external_key or case.id
-                )
+                details = await adapter.get_request_details(case.external_key or case.id)
                 if str(details.get("status_category", "")).upper() == "DONE":
                     CASES[case.id] = case.model_copy(
                         update={
@@ -335,8 +393,8 @@ async def _poll_jira_once() -> None:
                 _save_case(case)
                 result = await run_workflow(case, provider)
             except (
-                JiraConfigurationError,
-                JiraRequestError,
+                ITSMConfigurationError,
+                ITSMRequestError,
                 ProviderError,
                 RuntimeError,
             ) as exc:
@@ -407,9 +465,32 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_error(
+    _: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Describe invalid fields without echoing submitted values such as tokens."""
+    messages: list[str] = []
+    reasons = {
+        "missing": "is required",
+        "string_too_long": "is too long",
+        "string_too_short": "is too short",
+        "int_parsing": "must be an integer",
+        "greater_than_equal": "is below its minimum",
+        "less_than_equal": "is above its maximum",
+    }
+    for error in exc.errors():
+        location = [str(part) for part in error.get("loc", ()) if part != "body"]
+        field = ".".join(location) or "request"
+        reason = reasons.get(str(error.get("type", "")), "is invalid")
+        messages.append(f"{field} {reason}")
+    detail = "; ".join(messages) or "Request validation failed."
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 @app.middleware("http")
@@ -480,15 +561,189 @@ async def health() -> dict[str, str | bool]:
     }
 
 
+@app.get("/api/setup")
+async def get_setup() -> dict[str, object]:
+    """Return editable setup state without ever returning the stored API token."""
+    jira = JiraConfig.from_env()
+    return {
+        "jira_base_url": jira.base_url,
+        "jira_email": jira.email,
+        "jira_service_desk_id": jira.service_desk_id,
+        "jira_queue_id": jira.queue_id,
+        "jira_token_configured": bool(jira.api_token),
+        "knowledge_dir": os.getenv("KNOWLEDGE_DIR", ""),
+        "auto_triage_new_tickets": _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS"),
+        "poll_interval_seconds": _monitor_interval_seconds(),
+        "max_auto_triage_per_poll": _auto_triage_limit(),
+        "n1_keywords": os.getenv("SUPPORT_N1_KEYWORDS", ""),
+        "n3_plus_keywords": os.getenv("SUPPORT_N3_PLUS_KEYWORDS", ""),
+        "n3_keywords": os.getenv("SUPPORT_N3_KEYWORDS", ""),
+        "private_local_mode": _private_local_mode_enabled(),
+    }
+
+
+def _jira_discovery_config(settings: JiraDiscoveryRequest) -> JiraConfig:
+    if _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Jira discovery is disabled while PRIVATE_LOCAL_MODE is active.",
+        )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in (settings.jira_base_url, settings.jira_email, settings.jira_api_token, settings.service_desk_id)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Jira setup fields contain unsupported control characters.")
+    api_token = settings.jira_api_token.strip() or os.getenv("JSM_API_TOKEN", "").strip()
+    config = JiraConfig(
+        settings.jira_base_url.strip().rstrip("/"),
+        settings.jira_email.strip(),
+        api_token,
+        settings.service_desk_id.strip(),
+        "",
+    )
+    try:
+        config.validate(require_queue_ids=False)
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return config
+
+
+@app.post("/api/setup/jira/workspaces")
+async def discover_jira_workspaces(settings: JiraDiscoveryRequest) -> list[dict[str, str]]:
+    """Discover accessible service desks without persisting submitted credentials."""
+    config = _jira_discovery_config(settings)
+    try:
+        return await create_itsm_adapter("jira-service-management", config).list_workspaces()
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Jira service desk lookup failed: {exc}") from exc
+
+
+@app.post("/api/setup/jira/queues")
+async def discover_jira_queues(settings: JiraDiscoveryRequest) -> list[dict[str, str]]:
+    """Discover queues from one selected service desk without saving settings."""
+    config = _jira_discovery_config(settings)
+    try:
+        return await create_itsm_adapter("jira-service-management", config).list_queues(settings.service_desk_id)
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Jira queue lookup failed: {exc}") from exc
+
+
+@app.put("/api/setup")
+async def save_setup(settings: SetupRequest) -> dict[str, object]:
+    """Verify an optional Jira connection, then save local operator settings."""
+    connection_values = (
+        settings.jira_base_url,
+        settings.jira_email,
+        settings.jira_api_token,
+        settings.jira_service_desk_id,
+        settings.jira_queue_id,
+        settings.knowledge_dir,
+    )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in connection_values
+        for character in value
+    ) or any(
+        (ord(character) < 32 and character != "\n") or ord(character) == 127
+        for value in (settings.n1_keywords, settings.n3_plus_keywords, settings.n3_keywords)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Setup fields contain unsupported control characters.")
+    if _private_local_mode_enabled() and any((settings.jira_base_url, settings.jira_email, settings.jira_api_token)):
+        raise HTTPException(status_code=403, detail="Jira setup is disabled while PRIVATE_LOCAL_MODE is active.")
+
+    url = settings.jira_base_url.strip().rstrip("/")
+    email = settings.jira_email.strip()
+    desk = settings.jira_service_desk_id.strip()
+    queue = settings.jira_queue_id.strip()
+    token = settings.jira_api_token.strip() or os.getenv("JSM_API_TOKEN", "").strip()
+    jira_fields = (url, email, desk, queue)
+    queue_sample_count = 0
+    if any(jira_fields) or settings.jira_api_token.strip():
+        if not all(jira_fields) or not token:
+            raise HTTPException(status_code=422, detail="Enter the Jira site, account email, service desk ID, queue ID, and API token (or keep the saved token).")
+        candidate = JiraConfig(url, email, token, desk, queue)
+        try:
+            queue_sample_count = await create_itsm_adapter("jira-service-management", candidate).validate_connection()
+        except ITSMConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ITSMRequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Jira connection check failed: {exc}") from exc
+
+    knowledge_dir = settings.knowledge_dir.strip()
+    if knowledge_dir:
+        candidate_path = Path(knowledge_dir).expanduser()
+        if not candidate_path.is_dir():
+            raise HTTPException(status_code=422, detail="Knowledge directory does not exist on this machine.")
+        previous_knowledge_dir = os.environ.get("KNOWLEDGE_DIR")
+        os.environ["KNOWLEDGE_DIR"] = str(candidate_path.resolve())
+        try:
+            knowledge_check = knowledge_status()
+        finally:
+            if previous_knowledge_dir is None:
+                os.environ.pop("KNOWLEDGE_DIR", None)
+            else:
+                os.environ["KNOWLEDGE_DIR"] = previous_knowledge_dir
+        if not knowledge_check.get("available"):
+            raise HTTPException(status_code=422, detail=str(knowledge_check.get("message") or "Knowledge source allowlist could not be verified."))
+
+    env_values = {
+        "JSM_BASE_URL": url,
+        "JSM_USER_EMAIL": email,
+        "JSM_SERVICE_DESK_ID": desk,
+        "JSM_QUEUE_ID": queue,
+        "KNOWLEDGE_DIR": str(Path(knowledge_dir).expanduser().resolve()) if knowledge_dir else "",
+        "JSM_AUTO_TRIAGE_NEW_TICKETS": str(settings.auto_triage_new_tickets).lower(),
+        "JSM_POLL_INTERVAL_SECONDS": str(settings.poll_interval_seconds),
+        "JSM_AUTO_TRIAGE_MAX_PER_POLL": str(settings.max_auto_triage_per_poll),
+        "SUPPORT_N1_KEYWORDS": settings.n1_keywords.strip(),
+        "SUPPORT_N3_PLUS_KEYWORDS": settings.n3_plus_keywords.strip(),
+        "SUPPORT_N3_KEYWORDS": settings.n3_keywords.strip(),
+    }
+    try:
+        async with SETUP_WRITE_LOCK:
+            _persist_local_setup(
+                env_values,
+                settings.jira_api_token.strip(),
+                remove_api_token=not any(jira_fields),
+            )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="Local setup could not be saved. Check that the project folder is writable.") from exc
+
+    return {
+        "saved": True,
+        "jira_connected": bool(any(jira_fields) and token),
+        "jira_queue_sample_count": queue_sample_count,
+        "knowledge": knowledge_status(),
+        "message": "Settings saved on this machine. The API token is never returned to the browser.",
+    }
+
+
 @app.get("/api/integrations/status")
 async def integrations_status() -> dict[str, object]:
     jira = JiraConfig.from_env()
     private_mode = _private_local_mode_enabled()
+    adapter = (
+        create_itsm_adapter("jira-service-management", jira)
+        if jira.configured and not private_mode
+        else None
+    )
+    capabilities = sorted(adapter.capabilities) if adapter else []
     return {
         "private_local_mode": private_mode,
         "itsm_provider": "demo" if private_mode else "jira-service-management" if jira.configured else "demo",
         "jira_configured": jira.configured and not private_mode,
-        "jira_write_action": "public-comment-after-two-human-confirmations",
+        "itsm_capabilities": capabilities,
+        "jira_write_action": (
+            "public-comment-after-two-human-confirmations"
+            if "public_reply" in capabilities
+            else "not_configured"
+        ),
         "github_configured": False,
         "github_write_action": "not_implemented",
         "external_ticket_inference_allowed": (
@@ -514,10 +769,10 @@ async def sync_itsm_queue() -> list[CaseRecord]:
     config = JiraConfig.from_env()
     try:
         async with JIRA_MONITOR_LOCK:
-            remote_cases = await list_queue_cases(config)
-    except JiraConfigurationError as exc:
+            remote_cases = await create_itsm_adapter("jira-service-management", config).list_queue_cases()
+    except ITSMConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except JiraRequestError as exc:
+    except ITSMRequestError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     for case in remote_cases:
         CASES[case.id] = case.model_copy(
@@ -662,17 +917,15 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
         )
     if case.source == "jira-service-management":
         try:
-            details = await get_request_details(
-                JiraConfig.from_env(), case.external_key or case.id
-            )
+            details = await create_itsm_adapter("jira-service-management").get_request_details(case.external_key or case.id)
             case = case.model_copy(
                 update={"title": details["summary"], "body": details["description"]}
             )
             CASES[case.id] = case
             _save_case(case)
-        except JiraConfigurationError as exc:
+        except ITSMConfigurationError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except JiraRequestError as exc:
+        except ITSMRequestError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
     try:
         result = await run_workflow(
@@ -740,12 +993,10 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
             detail="This case is not linked to a Jira Service Management request",
         )
     try:
-        latest_details = await get_request_details(
-            JiraConfig.from_env(), case.external_key
-        )
-    except JiraConfigurationError as exc:
+        latest_details = await create_itsm_adapter("jira-service-management").get_request_details(case.external_key)
+    except ITSMConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except JiraRequestError as exc:
+    except ITSMRequestError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if (
         latest_details["summary"] != case.title
@@ -764,18 +1015,16 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
     result.ticket_comment_outcome = "unknown"
     _save_run(result)
     try:
-        posted = await create_public_comment(
-            JiraConfig.from_env(), case.external_key, result.draft
-        )
-    except JiraConfigurationError as exc:
+        posted = await create_itsm_adapter("jira-service-management").publish_public_reply(case.external_key, result.draft)
+    except ITSMConfigurationError as exc:
         result.ticket_comment_outcome = "failed"
         _save_run(result)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except JiraOutcomeUnknown as exc:
+    except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
         _save_run(result)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except JiraRequestError as exc:
+    except ITSMRequestError as exc:
         result.ticket_comment_outcome = "failed"
         _save_run(result)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
