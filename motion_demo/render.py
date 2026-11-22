@@ -14,9 +14,9 @@ import imageio_ffmpeg
 from PIL import Image, ImageDraw, ImageFont
 
 
-WIDTH, HEIGHT = 1280, 720
-FPS = 24
-DURATION = 30
+WIDTH, HEIGHT = 1080, 1080
+FPS = 60
+DURATION = 14
 ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "support-workflow-demo.mp4"
 SILENT = ROOT / ".video-only.mp4"
