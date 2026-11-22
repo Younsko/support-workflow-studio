@@ -18,7 +18,7 @@ WIDTH, HEIGHT = 1080, 1080
 FPS = 60
 DURATION = 14
 ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "support-workflow-demo.mp4"
+OUTPUT = ROOT / "motion-study.mp4"
 SILENT = ROOT / ".video-only.mp4"
 AUDIO = ROOT / ".procedural-audio.wav"
 
