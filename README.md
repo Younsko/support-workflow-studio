@@ -1,76 +1,82 @@
-# Support Workflow Studio
+<h1 align="center"><img src="docs/media/readme-banner.svg" alt="Support Workflow Studio" width="100%"></h1>
 
-A support automation workflow for receiving requests, retrieving approved guidance, proposing a response, checking it independently, and waiting for a human decision. Each run exposes its evidence, plan, review scores, revisions, and outcome.
+<p align="center"><strong>A local workbench for drafting, checking, and approving support replies.</strong><br>
+Follow a ticket from the first report to the exact words a reviewer can publish in Jira.</p>
 
-**This is a local prototype.** It ships with synthetic tickets and knowledge and has an optional operator-configured Jira Service Management Cloud queue connector. Jira connection is off by default. A workflow score of 9/10 is a quality gate, never a substitute for human approval. Publishing a public reply requires approval of the draft and a second explicit publish action. GitHub code commits are not implemented yet.
+<p align="center">
+  <a href="https://github.com/Younsko/support-workflow-studio/actions/workflows/ci.yml"><img alt="Build and test status" src="https://github.com/Younsko/support-workflow-studio/actions/workflows/ci.yml/badge.svg?branch=codex%2Fclean-public"></a>
+  &nbsp; · &nbsp; <a href="#demo">Watch the demo</a>
+  &nbsp; · &nbsp; <a href="#quickstart">Quickstart</a>
+  &nbsp; · &nbsp; <a href="docs/architecture.md">Architecture</a>
+  &nbsp; · &nbsp; <a href="LICENSE">MIT license</a>
+</p>
 
-The repository contains synthetic requests and guidance only. Keep real support data and confidential documentation out of public files, issues, screenshots, and model prompts. See [docs/data-boundaries.md](docs/data-boundaries.md).
+## Demo
 
-The optional `PRIVATE_LOCAL_MODE=true` guard restricts a local copy to a local Ollama model, refuses Jira settings and external model profiles, and blocks Jira sync and public reply writes. It accepts manually entered summaries only. Keep confidential data outside this repository and verify local inference before use.
+A requester’s VPN keeps disconnecting during customer calls. Watch the ticket reach N2, pick up an approved runbook, and return to the architect when the first plan scores below 9/10.
 
-## What you can explore
+https://github.com/user-attachments/assets/ed8991ed-b710-4aa4-974f-c2804bec74ab
 
-- A case queue with synthetic support requests and clear separation between reported text, inferred fields, and verified evidence.
-- A provisional N1/N2/N3/N3+ routing suggestion with deterministic escalation clues for reported broad impact, security, and recurrence; support tiers and urgency are visible in the review UI and remain subject to human confirmation.
-- A traceable workflow run: intake → independent investigation lanes → plan and critique loop → isolated response candidates → independent verifier → specialist review lanes → revision gate → human decision, with an optional three-model blind council.
-- Deterministic checks for evidence coverage, unresolved facts, safety and response completeness, alongside model-generated judgments.
-- A deterministic demo mode that runs without credentials, plus model adapters for local Ollama, OpenAI-compatible APIs, and Anthropic; the operator-selected local `.md`/`.txt` knowledge folder has an explicit file allowlist for Jira triage.
-- An optional Jira Service Management Cloud queue monitor in the API process, with configurable review-only auto-triage, bounded workflow-failure retries, and a separately confirmed public-comment action.
-- An audit timeline with stage outcomes, iteration counts, estimated latency, and explicit review state.
-- Session metrics derived from actual cases and workflow runs: open requests, live-model runs, median triage generation time, quality-gate outcomes, reviewer approvals/edits/rejections, and published replies.
-- A read-only product-signal panel that groups multiple completed triages by their inferred category, links back to the source requests, and can copy a human-review escalation brief without creating an engineering ticket.
+**14 seconds · French on-screen text.** Turn on sound for the music and the two final clicks. The first approves the draft. The second publishes the reviewed reply to Jira. [Download the MP4](motion_demo/support-workflow-demo.mp4?raw=true)
 
-## Motion demo
+## Quickstart
 
-[Watch the 30-second workflow animation](motion_demo/support-workflow-demo.mp4). The video is generated entirely by [the renderer](motion_demo/render.py), with synthetic ticket text, procedural sound, and no external assets or model calls. It shows intake, approved guidance, plan critique and revision, independent verification, specialist review, human approval, a separate publish action, and the integration boundaries.
+The default demo runs locally with synthetic tickets and guidance. It needs Python 3.11+ and Node.js 20+. You can run the whole review loop without a model account or a Jira tenant.
 
-## Run locally
+**macOS and Linux**
 
-Requirements: Python 3.11+ and Node.js 20+.
+```sh
+git clone https://github.com/Younsko/support-workflow-studio.git
+cd support-workflow-studio
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+npm --prefix frontend ci
+npm --prefix frontend run build
+.venv/bin/python -m uvicorn app.main:app --app-dir backend
+```
+
+<details>
+<summary><strong>Windows PowerShell</strong></summary>
 
 ```powershell
+git clone https://github.com/Younsko/support-workflow-studio.git
+cd support-workflow-studio
 python -m venv .venv
-\.venv\Scripts\Activate.ps1
-pip install -e .
-Copy-Item .env.example .env
-cd frontend
-npm install
-npm run build
-cd ..
-uvicorn app.main:app --app-dir backend
+.\.venv\Scripts\python.exe -m pip install -e .
+npm --prefix frontend ci
+npm --prefix frontend run build
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend
 ```
 
-Open `http://127.0.0.1:8000`. FastAPI serves the built frontend from `backend/app/static` when its `index.html` is present, keeping the UI and API on one local origin. The Vite build goes into that Python package directory so a built wheel can include the frontend assets. During UI development, keep the backend running in another terminal and run Vite separately instead of building; Vite proxies `/api` to `http://127.0.0.1:8000`:
+</details>
 
-```powershell
-cd frontend
-npm run dev
-```
+Open **http://127.0.0.1:8000**, select **SUP-4821 — VPN disconnects during customer calls**, and choose **Run workflow**. Look for `KB-104` in the evidence, then edit the proposed reply and choose **Save edit & re-review** to see how a change goes back through verification. [Guided walkthrough](docs/demo-guide.md)
 
-Open the local URL printed by Vite. Without model credentials, the workflow uses clearly labeled synthetic demo outputs. See [docs/provider-setup.md](docs/provider-setup.md) to configure an OpenAI-compatible endpoint or Anthropic Messages API. Provider subscriptions and API access are separate products in some services; verify your account's access and billing before enabling live inference.
+To connect a Jira Service Management Cloud queue, open **Setup** in the left navigation. Enter the Jira site, account email and API token, then discover and choose a service desk and queue. The app checks queue access before saving. Select a local knowledge folder that contains the approved-source manifest, and review the automatic triage and escalation defaults. The token is stored in the local ignored `.env` file and is never sent back to the browser. [Connector setup](docs/connector-setup.md)
 
-## Project boundaries
+## Inside a run
 
-- Start with synthetic Jira requests. Use a real queue only from an authorized local operator session and after your organization approves the connector and data handling; this prototype has no user accounts, roles, or durable audit log.
-- Never paste customer data, credentials, or recovery codes into chat, screenshots, or issues. If live model inference is explicitly enabled, Jira ticket text and matched local guidance are sent to that configured model provider.
-- Ticket content and retrieved knowledge are untrusted input. They cannot authorize a tool or override workflow policy.
-- Generated responses remain drafts until the reviewer approves them. Publishing a Jira reply is a second explicit action, and the API only accepts connections from the local machine.
-- With no JSM settings, no external system is read from or written to. Enabling JSM reads the selected queue while the API runs; new-ticket auto-triage is opt-in, never publishes replies or commits, and requires approved local knowledge. Public comment writes require the two human actions described above.
-- Jira triage stays disabled until `KNOWLEDGE_DIR` contains `.support-workflow-approved-sources.json` listing the guidance files allowed for retrieval. When a live model is used, both ticket text and retrieved guidance are sent to that configured provider only after `ALLOW_EXTERNAL_TICKET_INFERENCE=true` is set.
-- Provider calls are opt-in, bounded, and can incur cost. Do not expose API keys in screenshots or logs.
-- Tickets, workflow runs, approvals, and comment outcomes are stored locally in `.local/state.sqlite3` (or `.local/private-state.sqlite3` in private mode). Set `SUPPORT_WORKFLOW_DB_PATH` to change that path. The database is ignored by Git and is not a shared or authenticated production store. After an interrupted Jira write, inspect Jira manually before taking any further action.
+| Stage | What you can inspect |
+| --- | --- |
+| Intake and routing | The original report, the suggested support tier from N1 to N3+, and the impact or recurrence clues behind it. |
+| Evidence and planning | Approved guidance sits alongside open questions. Three investigation lanes examine the technical context, access and privacy, and customer impact before the architect and critic revise the plan. |
+| Draft and verification | The workflow can build up to three candidate replies. A separate verifier checks the selected draft against the ticket and its sources. Specialist reviewers assess technical accuracy, security, and clarity. |
+| Human decision | A draft must reach 9/10 to be eligible for approval. The reviewer can approve, reject, or edit it. Editing starts another review. |
+| Jira publication | On a connected queue, **Publish public reply** is a separate action. The API rechecks the Jira ticket against the reviewed snapshot before posting. |
 
-## Architecture
+The timeline retains the evidence, findings, revisions, and decision for each run. The product signals view groups recurring issues and links back to the cases behind a proposed engineering escalation. [Workflow design](docs/orchestration-patterns.md)
 
-See [docs/architecture.md](docs/architecture.md), [docs/orchestration-patterns.md](docs/orchestration-patterns.md), [docs/demo-guide.md](docs/demo-guide.md), and [docs/production-readiness.md](docs/production-readiness.md). The UI uses dark green `#0A3323`, moss `#839958`, beige `#F7F4D5`, rosy brown `#D3968C`, and midnight green `#105666`.
+## Configuration
 
-## Research note
+- **Bundled demo** uses deterministic responses and review results. The React workbench and FastAPI share a local origin, and SQLite stores cases and decisions under `.local/`.
+- **Live inference** supports local Ollama, OpenAI-compatible endpoints, and Anthropic. Per-run call limits and timeouts are configurable. [Provider setup](docs/provider-setup.md)
+- **Jira Service Management Cloud** can poll an operator-selected queue configured in the UI. Triage uses a local guidance allowlist, and sending ticket content to an external model requires explicit opt-in. [Connector setup](docs/connector-setup.md) · [Data boundaries](docs/data-boundaries.md)
+- **Private local mode** pairs loopback Ollama with manually entered cases. The prototype is designed for one local operator. Shared deployments and GitHub code changes are future work. [Production readiness](docs/production-readiness.md)
 
-The orchestration showcase follows [YK's Google Cloud Community synthesis](https://medium.com/google-cloud/5-agent-orchestration-patterns-backed-by-research-54be9f79171d) and its [original X post](https://x.com/googlecloud/status/2123428849262248255). The article draws on several separate studies; its benchmark gains and regressions are task-specific, not general production guarantees. The patterns in this app are practical workflow designs, not a reproduction of one study's benchmark architectures.
+## Development
 
-- [Google Research: Towards a science of scaling agent systems](https://research.google/blog/towards-a-science-of-scaling-agent-systems-when-and-why-agent-systems-work/)
-- [Nature Machine Intelligence: Capable language models can outgrow the benefits of collaboration](https://www.nature.com/articles/s42256-026-01268-y)
+For UI changes, keep FastAPI running and use `npm --prefix frontend run dev` in a second terminal. Vite proxies `/api` to the local backend. The CI workflow runs the Python tests and builds the TypeScript frontend. [Backend tests](backend/tests) · [CI workflow](.github/workflows/ci.yml)
 
-## License
+## License and credits
 
-MIT. See [LICENSE](LICENSE).
+The application code is distributed under the [MIT license](LICENSE). The demo features an excerpt of **« Базовый минимум » by SABI**. [Film credits](motion_demo/README.md)

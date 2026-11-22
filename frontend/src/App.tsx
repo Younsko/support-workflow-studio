@@ -4,9 +4,10 @@ import {
   CircleHelp, Clock3, FileSearch, Inbox, Layers3, LockKeyhole, MessageSquareText,
   MoreHorizontal, Play, Plus, Search, ShieldCheck, Sparkles, Target, UserRound, Copy,
   CloudDownload,
-  X,
+  Settings2, X,
 } from 'lucide-react'
 import WorkflowBuilder from './WorkflowBuilder'
+import SetupPanel from './SetupPanel'
 
 type SupportCase = {
   id: string; title: string; requester: string; channel: string; created_at: string
@@ -72,6 +73,7 @@ export default function App() {
   const [councilEnabled, setCouncilEnabled] = useState(false)
   const [draft, setDraft] = useState('')
   const [showIntake, setShowIntake] = useState(false)
+  const [showSetup, setShowSetup] = useState(false)
   const [intake, setIntake] = useState({ title: '', requester: '', body: '', impact: 'Unknown impact' })
   const [decisionBusy, setDecisionBusy] = useState(false)
   const selected = cases.find((item) => item.id === selectedId)
@@ -176,6 +178,24 @@ export default function App() {
     finally { setSyncing(false) }
   }
 
+  async function refreshSetupStatus() {
+    try {
+      const state = await api<Integrations>('/integrations/status')
+      const casesNow = state.jira_configured ? await api<SupportCase[]>('/itsm/sync', { method: 'POST' }) : await api<SupportCase[]>('/cases')
+      setIntegrations(state)
+      setCases((current) => state.jira_configured
+        ? [...current.filter((item) => item.source !== 'jira-service-management'), ...casesNow]
+        : casesNow)
+      if (state.jira_configured && selected?.source !== 'jira-service-management' && casesNow.length > 0) {
+        setSelectedId(casesNow[0].id)
+      }
+      setLastQueueSync(state.jira_configured
+        ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : state.jira_monitor.last_poll_at ? new Date(state.jira_monitor.last_poll_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null)
+      void refreshMetrics()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Workspace status could not be refreshed') }
+  }
+
   useEffect(() => {
     if (!integrations?.jira_configured) return
     async function refreshMonitorState() {
@@ -213,6 +233,7 @@ export default function App() {
           <a className={`nav-item ${activeSection === 'workflow' ? 'active' : ''}`} href="#workflow-studio" onClick={() => setActiveSection('workflow')} aria-current={activeSection === 'workflow' ? 'page' : undefined}><Layers3 size={17} /> Workflows</a>
           <a className={`nav-item ${activeSection === 'inbox' ? 'active' : ''}`} href="#workbench" onClick={() => setActiveSection('inbox')} aria-current={activeSection === 'inbox' ? 'page' : undefined}><Inbox size={17} /> Inbox <span className="nav-count">{metrics?.open_cases ?? '—'}</span></a>
           <a className={`nav-item ${activeSection === 'signals' ? 'active' : ''}`} href="#product-signals" onClick={() => setActiveSection('signals')} aria-current={activeSection === 'signals' ? 'page' : undefined}><Activity size={17} /> Product signals</a>
+          <button className="nav-item setup-nav-item" type="button" title="Workspace setup" aria-label="Open workspace setup" onClick={() => setShowSetup(true)}><Settings2 size={17} /> Setup</button>
         </nav>
         <div className="sidebar-bottom">
           <div className="safety-note"><div><ShieldCheck size={16} /> Human review required</div><p>Every response stays a draft until a person reviews it.</p></div>
@@ -338,11 +359,12 @@ export default function App() {
               </>}
             </section>
           </div>
-          <footer className="page-footer"><span><ShieldCheck size={14} />{integrations?.jira_configured ? ' Jira Service Management connected · local prototype' : ' Synthetic data · local prototype'} · GitHub code commits are not implemented</span><span>Support Workflow Studio <span className="footer-separator">/</span> v0.1</span></footer>
+          <footer className="page-footer"><span><ShieldCheck size={14} />{integrations?.jira_configured ? ' Jira Service Management connected · human-reviewed' : ' Synthetic data · local prototype'}</span><span>Support Workflow Studio <span className="footer-separator">/</span> v0.1</span></footer>
         </div>
       </main>
 
       {showIntake && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowIntake(false) }}><form className="intake-modal" onSubmit={submitIntake}><div className="modal-head"><div><span className="section-label">SYNTHETIC CASE INTAKE</span><h2>Add a lab request</h2></div><button className="icon-button" type="button" onClick={() => setShowIntake(false)} aria-label="Close"><X size={18} /></button></div><p>Use fictional details only. This local prototype is not approved for customer data.</p><label>Request title<input required minLength={4} value={intake.title} onChange={(event) => setIntake({ ...intake, title: event.target.value })} placeholder="Example: Calendar sync stopped" /></label><label>Fictional requester<input required minLength={2} value={intake.requester} onChange={(event) => setIntake({ ...intake, requester: event.target.value })} placeholder="Alex Morgan" /></label><label>What happened?<textarea required minLength={15} value={intake.body} onChange={(event) => setIntake({ ...intake, body: event.target.value })} placeholder="Describe the synthetic support issue..." /></label><label>Reported impact<input value={intake.impact} onChange={(event) => setIntake({ ...intake, impact: event.target.value })} /></label><div className="modal-actions"><button className="quiet-button" type="button" onClick={() => setShowIntake(false)}>Cancel</button><button className="primary-button" type="submit"><Plus size={15} /> Add to lab</button></div></form></div>}
+      {showSetup && <SetupPanel onClose={() => setShowSetup(false)} onSaved={() => void refreshSetupStatus()} />}
     </div>
   )
 }

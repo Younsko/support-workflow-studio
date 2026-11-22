@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from app import workflow
 from app.itsm import (
+    ITSMRequestError,
     JiraConfig,
     JiraConfigurationError,
     JiraOutcomeUnknown,
+    create_itsm_adapter,
     list_queue_cases,
 )
 from app.main import CASES, _validate_private_local_mode, app
@@ -81,6 +85,16 @@ def test_support_level_is_a_provisional_n1_to_n3plus_route(text, expected) -> No
 
     assert level == expected
     assert reason
+
+
+def test_operator_routing_phrases_extend_builtin_signals(monkeypatch) -> None:
+    monkeypatch.setenv("SUPPORT_N3_PLUS_KEYWORDS", "customer-impact escalation")
+    assert _support_level("Customer-impact escalation requested")[0] == "N3+"
+    assert _support_level("A phishing email was reported")[0] == "N3+"
+
+    monkeypatch.setenv("SUPPORT_N1_KEYWORDS", "guided setup")
+    assert _support_level("Please show me the guided setup")[0] == "N1"
+    assert _support_level("How do I open the settings?")[0] == "N1"
 
 
 def _configure_private_local_mode(monkeypatch) -> None:
@@ -329,19 +343,19 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch) -> None
         "description": "The VPN disconnected during a support call. Please advise.",
     }
 
-    async def get_details(_config, _issue_key):
-        return dict(ticket_details)
-
     published = []
 
-    async def create_comment(_config, issue_key, body):
-        published.append((issue_key, body))
-        return {"id": "synthetic-comment-1", "public": "True"}
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return dict(ticket_details)
+
+        async def publish_public_reply(self, issue_key, body):
+            published.append((issue_key, body))
+            return {"id": "synthetic-comment-1", "public": "True"}
 
     from app import main
 
-    monkeypatch.setattr(main, "get_request_details", get_details)
-    monkeypatch.setattr(main, "create_public_comment", create_comment)
+    monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
     run = client.post(
         "/api/workflows", json={"case_id": "DEMO-81", "candidate_count": 1}
     ).json()
@@ -436,6 +450,214 @@ def test_jira_queue_read_maps_only_bounded_queue_fields(monkeypatch) -> None:
     assert cases[0].source == "jira-service-management"
 
 
+def test_jira_workspace_and_queue_discovery_map_only_safe_fields(monkeypatch) -> None:
+    from app import itsm
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        is_error = False
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, payload):
+            self.payload = payload
+            self.requests = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, path, params=None):
+            self.requests.append((path, params))
+            return FakeResponse(self.payload)
+
+    config = JiraConfig(
+        base_url="https://example.atlassian.net",
+        email="agent@example.com",
+        api_token="synthetic-token",
+        service_desk_id="7",
+        queue_id="12",
+    )
+    desk_client = FakeClient({
+        "values": [
+            {"id": 7, "projectName": "Synthetic Support", "projectKey": "HELP", "secret": "drop"},
+            {"id": "bad-id", "projectName": "Invalid synthetic desk"},
+        ],
+        "isLastPage": True,
+    })
+    queue_client = FakeClient({
+        "values": [
+            {"id": 12, "name": "Open requests", "issueCount": 1234},
+            {"id": "bad-id", "name": "Invalid synthetic queue"},
+        ],
+        "isLastPage": True,
+    })
+    clients = [desk_client, queue_client]
+    monkeypatch.setattr(itsm, "_http_client", lambda *_args, **_kwargs: clients.pop(0))
+
+    desks = asyncio.run(itsm.list_service_desks(config))
+    queues = asyncio.run(itsm.list_service_desk_queues(config, "7"))
+
+    assert desks == [{"id": "7", "name": "Synthetic Support", "key": "HELP"}]
+    assert queues == [{"id": "12", "name": "Open requests"}]
+    assert desk_client.requests == [
+        ("/rest/servicedeskapi/servicedesk", {"start": 0, "limit": 50})
+    ]
+    assert queue_client.requests == [
+        ("/rest/servicedeskapi/servicedesk/7/queue", {"start": 0, "limit": 50})
+    ]
+
+
+def test_jira_public_comment_requires_confirmed_public_result(monkeypatch) -> None:
+    from app import itsm
+
+    class FakeResponse:
+        status_code = 201
+        is_error = False
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, payload):
+            self.payload = payload
+            self.request = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, path, json):
+            self.request = (path, json)
+            return FakeResponse(self.payload)
+
+    config = JiraConfig(
+        base_url="https://example.atlassian.net",
+        email="agent@example.com",
+        api_token="synthetic-token",
+        service_desk_id="7",
+        queue_id="12",
+    )
+    client_stub = FakeClient({"id": 91, "public": True})
+    monkeypatch.setattr(itsm, "_http_client", lambda *_args, **_kwargs: client_stub)
+
+    result = asyncio.run(
+        itsm.create_public_comment(config, "HELP-20", "Approved synthetic reply.")
+    )
+
+    assert result == {"id": "91", "public": "True"}
+    assert client_stub.request == (
+        "/rest/servicedeskapi/request/HELP-20/comment",
+        {"body": "Approved synthetic reply.", "public": True},
+    )
+
+    client_stub.payload = {"id": 92, "public": False}
+    with pytest.raises(JiraOutcomeUnknown, match="inspect the request"):
+        asyncio.run(
+            itsm.create_public_comment(config, "HELP-20", "Approved synthetic reply.")
+        )
+
+
+def test_jira_idempotent_reads_retry_rate_limits_using_bounded_retry_after(
+    monkeypatch,
+) -> None:
+    from app import itsm
+
+    class FakeResponse:
+        def __init__(self, status_code, headers=None):
+            self.status_code = status_code
+            self.headers = headers or {}
+
+    class FakeClient:
+        def __init__(self, responses):
+            self.responses = list(responses)
+            self.requests = []
+
+        async def get(self, path, params=None):
+            self.requests.append((path, params))
+            return self.responses.pop(0)
+
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(itsm.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(itsm.random, "uniform", lambda _minimum, _maximum: 0.1)
+    client_stub = FakeClient(
+        [
+            FakeResponse(429, {"Retry-After": "1.5"}),
+            FakeResponse(200),
+        ]
+    )
+    response = asyncio.run(
+        itsm._get_with_rate_limit_retry(
+            client_stub, "/request/HELP-20", {"start": 0, "limit": 1}
+        )
+    )
+
+    assert response.status_code == 200
+    assert client_stub.requests == [
+        ("/request/HELP-20", {"start": 0, "limit": 1}),
+        ("/request/HELP-20", {"start": 0, "limit": 1}),
+    ]
+    assert delays == [1.6]
+
+
+def test_jira_read_does_not_retry_without_acceptable_retry_after(monkeypatch) -> None:
+    from app import itsm
+
+    class FakeResponse:
+        def __init__(self, headers):
+            self.status_code = 429
+            self.headers = headers
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+            self.response = FakeResponse({"Retry-After": "120"})
+
+        async def get(self, _path):
+            self.calls += 1
+            return self.response
+
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(itsm.asyncio, "sleep", fake_sleep)
+    client_stub = FakeClient()
+    response = asyncio.run(itsm._get_with_rate_limit_retry(client_stub, "/queue"))
+
+    assert response.status_code == 429
+    assert client_stub.calls == 1
+    assert delays == []
+
+    client_stub.response = FakeResponse({})
+    client_stub.calls = 0
+    response = asyncio.run(itsm._get_with_rate_limit_retry(client_stub, "/queue"))
+    assert response.status_code == 429
+    assert client_stub.calls == 1
+    assert delays == []
+
+
 def test_live_model_inference_for_jira_ticket_is_opt_in(monkeypatch) -> None:
     configure_test_knowledge(monkeypatch)
     monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
@@ -458,15 +680,16 @@ def test_live_model_inference_for_jira_ticket_is_opt_in(monkeypatch) -> None:
         impact="One synthetic user",
     )
 
-    async def get_details(_config, _issue_key):
-        return {
-            "summary": "Synthetic sign-in request",
-            "description": "Synthetic issue.",
-        }
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return {
+                "summary": "Synthetic sign-in request",
+                "description": "Synthetic issue.",
+            }
 
     from app import main
 
-    monkeypatch.setattr(main, "get_request_details", get_details)
+    monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
     response = client.post(
         "/api/workflows", json={"case_id": "DEMO-82", "candidate_count": 1}
     )
@@ -497,25 +720,25 @@ def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch) -> Non
         impact="Synthetic single-user example",
     )
 
-    async def get_details(_config, _issue_key):
-        return {
-            "summary": "Synthetic VPN disconnect",
-            "description": "VPN disconnected.",
-        }
-
     call_count = 0
 
-    async def uncertain_comment(_config, _issue_key, _body):
-        nonlocal call_count
-        call_count += 1
-        raise JiraOutcomeUnknown(
-            "Jira comment outcome may be unknown; inspect the ticket."
-        )
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return {
+                "summary": "Synthetic VPN disconnect",
+                "description": "VPN disconnected.",
+            }
+
+        async def publish_public_reply(self, _issue_key, _body):
+            nonlocal call_count
+            call_count += 1
+            raise JiraOutcomeUnknown(
+                "Jira comment outcome may be unknown; inspect the ticket."
+            )
 
     from app import main
 
-    monkeypatch.setattr(main, "get_request_details", get_details)
-    monkeypatch.setattr(main, "create_public_comment", uncertain_comment)
+    monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
     run = client.post(
         "/api/workflows", json={"case_id": "DEMO-83", "candidate_count": 1}
     ).json()
@@ -529,6 +752,276 @@ def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch) -> Non
     assert first_attempt.status_code == 502
     assert second_attempt.status_code == 409
     assert call_count == 1
+
+
+def test_jira_setup_discovers_workspaces_without_persisting_credentials(monkeypatch) -> None:
+    from app import main
+
+    captured = []
+
+    class FakeAdapter:
+        async def list_workspaces(self):
+            return [{"id": "7", "name": "Synthetic Help Desk", "key": "HELP"}]
+
+    def make_adapter(provider_id, config):
+        captured.append((provider_id, config))
+        return FakeAdapter()
+
+    monkeypatch.setattr(main, "create_itsm_adapter", make_adapter)
+    monkeypatch.delenv("JSM_API_TOKEN", raising=False)
+    secret = "test-token"
+    response = client.post(
+        "/api/setup/jira/workspaces",
+        json={
+            "jira_base_url": "https://example.atlassian.net",
+            "jira_email": "agent@example.com",
+            "jira_api_token": secret,
+            "service_desk_id": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": "7", "name": "Synthetic Help Desk", "key": "HELP"}]
+    assert captured[0][0] == "jira-service-management"
+    assert captured[0][1].api_token == secret
+    assert "JSM_API_TOKEN" not in os.environ
+    assert secret not in response.text
+
+
+def test_itsm_factory_exposes_only_implemented_provider_capabilities() -> None:
+    adapter = create_itsm_adapter(
+        "jira-service-management",
+        JiraConfig(
+            base_url="https://example.atlassian.net",
+            email="agent@example.com",
+            api_token="synthetic-token",
+            service_desk_id="7",
+            queue_id="12",
+        ),
+    )
+    assert adapter.provider_id == "jira-service-management"
+    assert adapter.capabilities == frozenset(
+        {"queue_read", "request_refresh", "public_reply"}
+    )
+
+    with pytest.raises(JiraConfigurationError, match="not implemented"):
+        create_itsm_adapter("unimplemented-provider")
+
+
+def test_setup_status_reports_token_presence_without_returning_token(monkeypatch) -> None:
+    from app import main
+
+    secret = "test-token"
+    monkeypatch.setenv("JSM_BASE_URL", "https://example.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", secret)
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "7")
+    monkeypatch.setenv("JSM_QUEUE_ID", "12")
+
+    response = client.get("/api/setup")
+
+    assert response.status_code == 200
+    assert response.json()["jira_token_configured"] is True
+    assert secret not in response.text
+    assert "jira_api_token" not in response.json()
+
+
+def test_jira_setup_saves_only_after_connection_and_knowledge_checks(monkeypatch) -> None:
+    from app import main
+
+    saved = []
+
+    class FakeAdapter:
+        async def validate_connection(self):
+            return 2
+
+    def make_adapter(provider_id, config):
+        assert provider_id == "jira-service-management"
+        assert config.api_token == "test-token"
+        return FakeAdapter()
+
+    def persist(values, api_token, remove_api_token):
+        saved.append((dict(values), api_token, remove_api_token))
+        for name, value in values.items():
+            monkeypatch.setenv(name, value)
+        monkeypatch.setenv("JSM_API_TOKEN", api_token)
+
+    monkeypatch.setattr(main, "create_itsm_adapter", make_adapter)
+    monkeypatch.setattr(main, "_persist_local_setup", persist)
+    monkeypatch.setattr(main, "knowledge_status", lambda: {
+        "mode": "local", "configured": True, "available": True,
+        "source_count": 2, "message": "Approved sources ready.",
+    })
+
+    response = client.put(
+        "/api/setup",
+        json={
+            "jira_base_url": "https://example.atlassian.net",
+            "jira_email": "agent@example.com",
+            "jira_api_token": "test-token",
+            "jira_service_desk_id": "7",
+            "jira_queue_id": "12",
+            "knowledge_dir": str(TEST_KNOWLEDGE_DIR),
+            "auto_triage_new_tickets": True,
+            "poll_interval_seconds": 90,
+            "max_auto_triage_per_poll": 3,
+            "n1_keywords": "how to, routine question",
+            "n3_plus_keywords": "security incident",
+            "n3_keywords": "recurring, crash",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["jira_connected"] is True
+    assert response.json()["jira_queue_sample_count"] == 2
+    assert "test-token" not in response.text
+    assert len(saved) == 1
+    values, token, remove_token = saved[0]
+    assert values["JSM_QUEUE_ID"] == "12"
+    assert values["JSM_AUTO_TRIAGE_NEW_TICKETS"] == "true"
+    assert values["JSM_POLL_INTERVAL_SECONDS"] == "90"
+    assert values["JSM_AUTO_TRIAGE_MAX_PER_POLL"] == "3"
+    assert values["SUPPORT_N3_PLUS_KEYWORDS"] == "security incident"
+    assert token == "test-token"
+    assert remove_token is False
+
+
+def test_jira_setup_connection_failure_does_not_persist_settings(monkeypatch) -> None:
+    from app import main
+
+    persisted = []
+
+    class FakeAdapter:
+        async def validate_connection(self):
+            raise ITSMRequestError("Synthetic Jira read failure.")
+
+    monkeypatch.setattr(
+        main,
+        "create_itsm_adapter",
+        lambda *_args, **_kwargs: FakeAdapter(),
+    )
+    monkeypatch.setattr(main, "_persist_local_setup", lambda *args: persisted.append(args))
+
+    response = client.put(
+        "/api/setup",
+        json={
+            "jira_base_url": "https://example.atlassian.net",
+            "jira_email": "agent@example.com",
+            "jira_api_token": "test-token",
+            "jira_service_desk_id": "7",
+            "jira_queue_id": "12",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "test-token" not in response.text
+    assert persisted == []
+
+
+def test_setup_rejects_knowledge_folder_without_approved_manifest(
+    monkeypatch, tmp_path
+) -> None:
+    from app import main
+
+    persisted = []
+    monkeypatch.delenv("KNOWLEDGE_DIR", raising=False)
+    monkeypatch.setattr(
+        main, "_persist_local_setup", lambda *args, **kwargs: persisted.append(args)
+    )
+
+    response = client.put(
+        "/api/setup",
+        json={
+            "knowledge_dir": str(tmp_path),
+            "n1_keywords": "how to",
+            "n3_plus_keywords": "security incident",
+            "n3_keywords": "recurring",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "approved" in response.json()["detail"].lower()
+    assert persisted == []
+    assert "KNOWLEDGE_DIR" not in os.environ
+
+
+def test_auto_triage_creates_reviewable_draft_for_new_ticket_only(monkeypatch) -> None:
+    from app import main
+
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", "test-token")
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "1")
+    monkeypatch.setenv("JSM_QUEUE_ID", "2")
+    monkeypatch.setenv("JSM_AUTO_TRIAGE_NEW_TICKETS", "true")
+    monkeypatch.setenv("KNOWLEDGE_DIR", str(TEST_KNOWLEDGE_DIR))
+
+    def make_case(case_id: str, created_at: str) -> CaseRecord:
+        return CaseRecord(
+            id=case_id,
+            external_key=case_id,
+            source="jira-service-management",
+            title="Synthetic VPN disconnect",
+            requester="Synthetic Requester",
+            channel="Jira Service Management",
+            created_at=created_at,
+            priority="High",
+            category="Connectivity",
+            status="Open",
+            body="A synthetic VPN connection disconnected.",
+            impact="Synthetic single-user example",
+        )
+
+    existing = make_case("HELP-20", (datetime.now(UTC) - timedelta(hours=1)).isoformat())
+    new_case = make_case("HELP-21", (datetime.now(UTC) + timedelta(seconds=5)).isoformat())
+    current_cases = [existing]
+
+    class FakeAdapter:
+        async def list_queue_cases(self, limit=50, start=0):
+            assert limit == 50
+            return list(current_cases) if start == 0 else []
+
+        async def get_request_details(self, issue_key):
+            assert issue_key == "HELP-21"
+            return {
+                "summary": "Synthetic VPN disconnect",
+                "description": "A synthetic VPN connection disconnected.",
+                "status": "Open",
+            }
+
+    monkeypatch.setattr(
+        main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter()
+    )
+    main.JIRA_SEEN_KEYS.clear()
+    main.JIRA_PENDING_TRIAGE_ATTEMPTS.clear()
+    main.JIRA_LOCAL_TAGS.clear()
+    main.JIRA_MONITOR_BASELINED = False
+    main.JIRA_MONITOR_BASELINE_AT = None
+    main.JIRA_AUTO_TRIAGE_BASELINE_AT = None
+    main.JIRA_AUTO_TRIAGE_WAS_ENABLED = False
+    main.JIRA_MONITOR_STATE.update(
+        enabled=False,
+        last_poll_at=None,
+        last_error=None,
+        new_cases_seen=0,
+        auto_triaged_count=0,
+        auto_triage_deferred=0,
+        retry_pending_count=0,
+        page_cap_reached=False,
+        auto_triage_enabled=False,
+    )
+
+    asyncio.run(main._poll_jira_once())
+    assert not any(run.case_id == "HELP-20" for run in main.RUNS.values())
+
+    current_cases.append(new_case)
+    asyncio.run(main._poll_jira_once())
+
+    run = next(run for run in main.RUNS.values() if run.case_id == "HELP-21")
+    assert run.status == "awaiting_human"
+    assert run.ticket_comment_published is False
+    assert main.JIRA_MONITOR_STATE["auto_triaged_count"] == 1
 
 def test_plan_critic_requires_structured_latest_score_and_review_arrays() -> None:
     score, findings, missing, valid = workflow._plan_critic_result(
@@ -622,3 +1115,74 @@ def test_n1_customer_reply_can_pass_without_internal_citation_or_incident_discla
     assert workflow._draft_hard_fail(case, natural_reply, evidence) is False
     assert workflow._draft_hard_fail(case, natural_reply + " Visit https://invented.example", evidence) is True
     assert workflow._draft_hard_fail(case, "Please send your password.", evidence) is True
+
+def test_approved_ticket_reply_publishes_only_after_approval_and_once(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    configure_test_knowledge(monkeypatch)
+    monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", "synthetic-token")
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "1")
+    monkeypatch.setenv("JSM_QUEUE_ID", "2")
+    CASES["DEMO-84"] = CaseRecord(
+        id="DEMO-84",
+        external_key="DEMO-84",
+        source="jira-service-management",
+        title="Synthetic VPN disconnect",
+        requester="Synthetic Requester",
+        channel="Jira Service Management",
+        created_at="2026-11-22T09:00:00Z",
+        priority="High",
+        category="Connectivity",
+        status="Open",
+        body="The VPN disconnected during a synthetic support call.",
+        impact="Synthetic single-user example",
+    )
+
+    ticket_details = {
+        "summary": "Synthetic VPN disconnect",
+        "description": "The VPN disconnected during a synthetic support call.",
+    }
+    published: list[tuple[str, str]] = []
+
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return dict(ticket_details)
+
+        async def publish_public_reply(self, issue_key, body):
+            published.append((issue_key, body))
+            return {"id": "synthetic-comment-2", "public": "True"}
+
+    from app import main
+
+    monkeypatch.setattr(
+        main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter()
+    )
+    run = client.post(
+        "/api/workflows", json={"case_id": "DEMO-84", "candidate_count": 1}
+    ).json()
+    reviewed_draft = run["draft"]
+
+    early_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert early_publish.status_code == 409
+    assert published == []
+
+    approval = client.post(
+        f"/api/workflows/{run['id']}/decision",
+        json={"decision": "approve", "expected_version": run["approval_version"]},
+    )
+    assert approval.status_code == 200
+    assert approval.json()["status"] == "approved"
+
+    publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert publish.status_code == 200
+    assert publish.json() == {
+        "published": True,
+        "comment_id": "synthetic-comment-2",
+        "public": True,
+    }
+    assert published == [("DEMO-84", reviewed_draft)]
+
+    duplicate_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert duplicate_publish.status_code == 409
+    assert len(published) == 1
