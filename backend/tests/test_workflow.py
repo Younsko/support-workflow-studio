@@ -826,6 +826,102 @@ def test_setup_status_reports_token_presence_without_returning_token(monkeypatch
     assert "jira_api_token" not in response.json()
 
 
+def test_setup_status_reports_model_configuration_without_returning_key(monkeypatch) -> None:
+    secret = "synthetic-model-key"
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("MODEL_API_KEY", secret)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+
+    response = client.get("/api/setup")
+
+    assert response.status_code == 200
+    assert response.json()["model_provider"] == "openai-compatible"
+    assert response.json()["model_name"] == "synthetic-model"
+    assert response.json()["model_api_key_configured"] is True
+    assert response.json()["external_model_disclosure_accepted"] is True
+    assert secret not in response.text
+    assert "model_api_key" not in response.json()
+
+
+def test_model_setup_saves_byok_settings_without_calling_or_echoing_key(monkeypatch) -> None:
+    from app import main
+
+    captured = []
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    monkeypatch.delenv("ALLOW_EXTERNAL_TICKET_INFERENCE", raising=False)
+
+    def persist(values, api_token, remove_api_token, **model_settings):
+        captured.append((dict(values), api_token, remove_api_token, model_settings))
+
+    monkeypatch.setattr(main, "_persist_local_setup", persist)
+    secret = "synthetic-api-key-for-test"
+    response = client.put(
+        "/api/setup",
+        json={
+            "model_provider": "openai-compatible",
+            "model_name": "synthetic-model",
+            "model_base_url": "https://api.groq.com/openai/v1",
+            "model_api_key": secret,
+            "external_model_disclosure_accepted": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert secret not in response.text
+    assert response.json()["model_provider"] == "openai-compatible"
+    assert response.json()["external_model_disclosure_accepted"] is True
+    values, _, _, model_settings = captured[0]
+    assert values["MODEL_PROVIDER"] == "openai-compatible"
+    assert values["MODEL_NAME"] == "synthetic-model"
+    assert values["ALLOW_EXTERNAL_TICKET_INFERENCE"] == "true"
+    assert model_settings["model_api_key"] == secret
+    assert model_settings["remove_model_api_key"] is False
+
+
+def test_external_model_setup_requires_explicit_disclosure_consent(monkeypatch) -> None:
+    from app import main
+
+    persisted = []
+    monkeypatch.setattr(main, "_persist_local_setup", lambda *args, **kwargs: persisted.append(args))
+    secret = "synthetic-api-key-for-test"
+    response = client.put(
+        "/api/setup",
+        json={
+            "model_provider": "anthropic",
+            "model_name": "synthetic-model",
+            "model_api_key": secret,
+            "external_model_disclosure_accepted": False,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "external model provider" in response.json()["detail"]
+    assert secret not in response.text
+    assert persisted == []
+
+
+def test_ollama_setup_rejects_non_loopback_endpoint(monkeypatch) -> None:
+    from app import main
+
+    persisted = []
+    monkeypatch.setattr(main, "_persist_local_setup", lambda *args, **kwargs: persisted.append(args))
+    response = client.put(
+        "/api/setup",
+        json={
+            "model_provider": "ollama-local",
+            "model_name": "synthetic-model",
+            "model_base_url": "https://model.example.test",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "loopback" in response.json()["detail"]
+    assert persisted == []
+
+
 def test_jira_setup_saves_only_after_connection_and_knowledge_checks(monkeypatch) -> None:
     from app import main
 
@@ -840,8 +936,8 @@ def test_jira_setup_saves_only_after_connection_and_knowledge_checks(monkeypatch
         assert config.api_token == "test-token"
         return FakeAdapter()
 
-    def persist(values, api_token, remove_api_token):
-        saved.append((dict(values), api_token, remove_api_token))
+    def persist(values, api_token, remove_api_token, **model_settings):
+        saved.append((dict(values), api_token, remove_api_token, model_settings))
         for name, value in values.items():
             monkeypatch.setenv(name, value)
         monkeypatch.setenv("JSM_API_TOKEN", api_token)
@@ -876,7 +972,7 @@ def test_jira_setup_saves_only_after_connection_and_knowledge_checks(monkeypatch
     assert response.json()["jira_queue_sample_count"] == 2
     assert "test-token" not in response.text
     assert len(saved) == 1
-    values, token, remove_token = saved[0]
+    values, token, remove_token, model_settings = saved[0]
     assert values["JSM_QUEUE_ID"] == "12"
     assert values["JSM_AUTO_TRIAGE_NEW_TICKETS"] == "true"
     assert values["JSM_POLL_INTERVAL_SECONDS"] == "90"
@@ -884,6 +980,8 @@ def test_jira_setup_saves_only_after_connection_and_knowledge_checks(monkeypatch
     assert values["SUPPORT_N3_PLUS_KEYWORDS"] == "security incident"
     assert token == "test-token"
     assert remove_token is False
+    assert model_settings["model_api_key"] == ""
+    assert model_settings["remove_model_api_key"] is False
 
 
 def test_jira_setup_connection_failure_does_not_persist_settings(monkeypatch) -> None:

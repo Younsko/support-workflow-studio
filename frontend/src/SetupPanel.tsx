@@ -14,6 +14,11 @@ type SetupValues = {
   n1_keywords: string
   n3_plus_keywords: string
   n3_keywords: string
+  model_provider: string
+  model_name: string
+  model_base_url: string
+  model_api_key_configured: boolean
+  external_model_disclosure_accepted: boolean
   private_local_mode: boolean
 }
 type JiraOption = { id: string; name: string; key?: string }
@@ -22,7 +27,9 @@ const emptySetup: SetupValues = {
   jira_base_url: '', jira_email: '', jira_service_desk_id: '', jira_queue_id: '',
   jira_token_configured: false, knowledge_dir: '', auto_triage_new_tickets: false,
   poll_interval_seconds: 60, max_auto_triage_per_poll: 5,
-  n1_keywords: '', n3_plus_keywords: '', n3_keywords: '', private_local_mode: false,
+  n1_keywords: '', n3_plus_keywords: '', n3_keywords: '', model_provider: 'demo',
+  model_name: 'Synthetic workflow model', model_base_url: '', model_api_key_configured: false,
+  external_model_disclosure_accepted: false, private_local_mode: false,
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -37,6 +44,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [values, setValues] = useState<SetupValues>(emptySetup)
   const [token, setToken] = useState('')
+  const [modelKey, setModelKey] = useState('')
+  const [clearModelKey, setClearModelKey] = useState(false)
   const [workspaces, setWorkspaces] = useState<JiraOption[]>([])
   const [queues, setQueues] = useState<JiraOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -111,15 +120,22 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
     event.preventDefault()
     setSaving(true); setError(''); setResult('')
     try {
-      const outcome = await request<{ jira_connected: boolean; jira_queue_sample_count: number; knowledge: { mode: string; available: boolean; source_count: number } }>('/setup', {
+      const outcome = await request<{ jira_connected: boolean; jira_queue_sample_count: number; knowledge: { mode: string; available: boolean; source_count: number }; model_provider: string; model_name: string }>('/setup', {
         method: 'PUT',
-        body: JSON.stringify({ ...values, jira_api_token: token }),
+        body: JSON.stringify({ ...values, jira_api_token: token, model_api_key: modelKey, clear_model_api_key: clearModelKey }),
       })
-      setValues((current) => ({ ...current, jira_token_configured: current.jira_token_configured || Boolean(token) }))
+      setValues((current) => ({
+        ...current,
+        jira_token_configured: current.jira_token_configured || Boolean(token),
+        model_api_key_configured: clearModelKey ? false : current.model_api_key_configured || Boolean(modelKey),
+      }))
       setToken('')
+      setModelKey('')
+      setClearModelKey(false)
+      const modelSummary = `Model settings saved for ${outcome.model_provider} · ${outcome.model_name}. No model request was sent.`
       setResult(outcome.jira_connected
-        ? `Jira queue verified (${outcome.jira_queue_sample_count} sample ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'}). ${outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} approved local sources ready.` : 'Select an approved local knowledge folder before Jira triage.'}`
-        : 'Local knowledge and workflow settings saved.')
+        ? `Jira queue verified (${outcome.jira_queue_sample_count} sample ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'}). ${outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} approved local sources ready.` : 'Select an approved local knowledge folder before Jira triage.'} ${modelSummary}`
+        : `Local settings saved. ${modelSummary}`)
       onSaved()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Settings could not be saved')
@@ -135,7 +151,7 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
   return (
     <div className="modal-backdrop setup-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <form className="setup-modal" onSubmit={save}>
-        <div className="setup-header"><div><span className="section-label"><PlugZap size={13} /> WORKSPACE SETUP</span><h2>Connect your support workflow</h2><p>Configure one ticket source, approved knowledge, and safe triage defaults.</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close setup"><X size={18} /></button></div>
+      <div className="setup-header"><div><span className="section-label"><PlugZap size={13} /> WORKSPACE SETUP</span><h2>Connect your support workflow</h2><p>Configure a ticket source, approved knowledge, triage rules, and a model provider.</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close setup"><X size={18} /></button></div>
         {loading ? <div className="setup-loading">Loading local settings…</div> : <>
           {values.private_local_mode && <div className="setup-notice"><ShieldCheck size={16} /> Private local mode is active. External Jira connections are disabled by the server.</div>}
           <div className="setup-grid">
@@ -162,10 +178,32 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
               <label>N3 · recurring or engineering review<textarea rows={3} value={values.n3_keywords} onChange={setField('n3_keywords')} placeholder="repeated, recurring, multiple users, regression, crash, bug" /></label>
               <div className="setup-notice subtle-notice"><CircleAlert size={15} /> Rules are advisory classification. They do not trigger remediation or skip human review.</div>
             </section>
+            <section className="setup-card"><div className="setup-card-title"><span>04</span><div><h3>Model provider</h3><p>Choose a local model or bring a provider key. Saving settings does not call the model.</p></div></div>
+              <label>Provider<select value={values.model_provider} onChange={(event) => { update('model_provider', event.target.value); setResult('') }}>
+                <option value="demo">Demo · synthetic responses</option>
+                <option value="openai-compatible" disabled={values.private_local_mode}>OpenAI-compatible API · includes Groq</option>
+                <option value="anthropic" disabled={values.private_local_mode}>Anthropic API</option>
+                <option value="ollama-local">Ollama · this machine</option>
+              </select></label>
+              <label>Model name<input value={values.model_name} onChange={setField('model_name')} placeholder={values.model_provider === 'demo' ? 'Synthetic workflow model' : 'Provider model identifier'} /></label>
+              {(values.model_provider === 'openai-compatible' || values.model_provider === 'ollama-local') && <label>API base URL<input value={values.model_base_url} onChange={setField('model_base_url')} placeholder={values.model_provider === 'ollama-local' ? 'http://127.0.0.1:11434' : 'https://api.groq.com/openai/v1'} /></label>}
+              {(values.model_provider === 'openai-compatible' || values.model_provider === 'anthropic') && <>
+                <label>Model API key<input type="password" value={modelKey} onChange={(event) => { setModelKey(event.target.value); setClearModelKey(false); setResult('') }} placeholder={values.model_api_key_configured ? 'Saved locally — leave blank to keep' : 'Paste provider API key'} autoComplete="new-password" /></label>
+                {values.model_api_key_configured && <>
+                  <label className="setup-checkbox"><input type="checkbox" checked={clearModelKey} disabled={values.model_provider === 'openai-compatible' || values.model_provider === 'anthropic'} onChange={(event) => { setClearModelKey(event.target.checked); setModelKey('') }} /> Remove saved model API key</label>
+                  {(values.model_provider === 'openai-compatible' || values.model_provider === 'anthropic') && <small className="setup-help">Switch to Demo or Ollama before removing the key used by the selected API provider.</small>}
+                </>}
+                <label className="setup-checkbox"><input type="checkbox" checked={values.external_model_disclosure_accepted} onChange={(event) => update('external_model_disclosure_accepted', event.target.checked)} /> I understand that the selected external model provider will receive ticket content needed for a run</label>
+                <div className="setup-notice"><CircleAlert size={15} /> Live requests are not sent while saving. The external model receives ticket text only when a workflow run is started; review your provider terms and data policy first.</div>
+              </>}
+              {values.model_provider === 'ollama-local' && <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> Only a loopback Ollama URL is accepted. Ticket content stays on this machine when the runtime uses this local provider.</div>}
+              {values.model_provider === 'demo' && <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> Demo mode uses synthetic responses and does not call an external model.</div>}
+              <small className="setup-help">API keys are written to this machine’s ignored .env file and are never returned to the browser. This local setup is not the hosted runner secret store.</small>
+            </section>
           </div>
           {error && <div className="setup-feedback error" role="alert">{error}</div>}
           {result && <div className="setup-feedback success" role="status"><CheckCircle2 size={16} /> {result}</div>}
-          <div className="setup-actions"><span>Changes are stored in the local ignored <code>.env</code> file.</span><button className="quiet-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? 'Checking and saving…' : 'Check connection and save'}</button></div>
+          <div className="setup-actions"><span>Changes are stored in the local ignored <code>.env</code> file.</span><button className="quiet-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? 'Saving settings…' : 'Save settings'}</button></div>
         </>}
       </form>
     </div>

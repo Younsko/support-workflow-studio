@@ -46,6 +46,8 @@ load_dotenv()
 
 
 class SetupRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     jira_base_url: str = Field(default="", max_length=255)
     jira_email: str = Field(default="", max_length=255)
     jira_api_token: str = Field(default="", max_length=2000, repr=False)
@@ -58,6 +60,12 @@ class SetupRequest(BaseModel):
     n1_keywords: str = Field(default="", max_length=2000)
     n3_plus_keywords: str = Field(default="", max_length=2000)
     n3_keywords: str = Field(default="", max_length=2000)
+    model_provider: str | None = Field(default=None, max_length=40)
+    model_name: str | None = Field(default=None, max_length=160)
+    model_base_url: str | None = Field(default=None, max_length=255)
+    model_api_key: str = Field(default="", max_length=2000, repr=False)
+    clear_model_api_key: bool = False
+    external_model_disclosure_accepted: bool | None = None
 
 
 class JiraDiscoveryRequest(BaseModel):
@@ -92,7 +100,11 @@ SETUP_WRITE_LOCK = asyncio.Lock()
 
 
 def _persist_local_setup(
-    values: dict[str, str], api_token: str, remove_api_token: bool
+    values: dict[str, str],
+    api_token: str,
+    remove_api_token: bool,
+    model_api_key: str = "",
+    remove_model_api_key: bool = False,
 ) -> None:
     """Atomically update ignored local configuration, then apply it in-process."""
     env_path = Path(__file__).resolve().parents[2] / ".env"
@@ -110,6 +122,10 @@ def _persist_local_setup(
             set_key(str(staged_path), "JSM_API_TOKEN", api_token, quote_mode="always")
         elif remove_api_token:
             unset_key(str(staged_path), "JSM_API_TOKEN")
+        if model_api_key:
+            set_key(str(staged_path), "MODEL_API_KEY", model_api_key, quote_mode="always")
+        elif remove_model_api_key:
+            unset_key(str(staged_path), "MODEL_API_KEY")
         if os.name != "nt":
             staged_path.chmod(0o600)
         os.replace(staged_path, env_path)
@@ -122,6 +138,10 @@ def _persist_local_setup(
         os.environ["JSM_API_TOKEN"] = api_token
     elif remove_api_token:
         os.environ.pop("JSM_API_TOKEN", None)
+    if model_api_key:
+        os.environ["MODEL_API_KEY"] = model_api_key
+    elif remove_model_api_key:
+        os.environ.pop("MODEL_API_KEY", None)
 
 
 def _save_case(case: CaseRecord) -> None:
@@ -567,6 +587,7 @@ async def health() -> dict[str, str | bool]:
 async def get_setup() -> dict[str, object]:
     """Return editable setup state without ever returning the stored API token."""
     jira = JiraConfig.from_env()
+    model = ProviderConfig.from_env()
     return {
         "jira_base_url": jira.base_url,
         "jira_email": jira.email,
@@ -580,8 +601,122 @@ async def get_setup() -> dict[str, object]:
         "n1_keywords": os.getenv("SUPPORT_N1_KEYWORDS", ""),
         "n3_plus_keywords": os.getenv("SUPPORT_N3_PLUS_KEYWORDS", ""),
         "n3_keywords": os.getenv("SUPPORT_N3_KEYWORDS", ""),
+        "model_provider": model.provider,
+        "model_name": model.model,
+        "model_base_url": model.base_url,
+        "model_api_key_configured": bool(os.getenv("MODEL_API_KEY", "").strip()),
+        "external_model_disclosure_accepted": model.external_ticket_inference_allowed,
         "private_local_mode": _private_local_mode_enabled(),
     }
+
+
+def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str, bool]:
+    """Validate local model settings without sending a prompt or probing a provider."""
+    current = ProviderConfig.from_env()
+    provider = (settings.model_provider or current.provider).strip().lower()
+    model_name = (settings.model_name if settings.model_name is not None else current.model).strip()
+    base_url = (
+        settings.model_base_url
+        if settings.model_base_url is not None
+        else current.base_url
+    ).strip().rstrip("/")
+    api_key = settings.model_api_key.strip()
+    consent = (
+        settings.external_model_disclosure_accepted
+        if settings.external_model_disclosure_accepted is not None
+        else current.external_ticket_inference_allowed
+    )
+    model_fields_submitted = any(
+        value is not None
+        for value in (
+            settings.model_provider,
+            settings.model_name,
+            settings.model_base_url,
+            settings.external_model_disclosure_accepted,
+        )
+    )
+    if not model_fields_submitted and not api_key and not settings.clear_model_api_key:
+        return {}, "", False
+
+    supported = {"demo", "openai-compatible", "anthropic", "ollama-local"}
+    if provider not in supported:
+        raise HTTPException(status_code=422, detail="Choose demo, OpenAI-compatible, Anthropic, or local Ollama.")
+    if provider != "demo" and not model_name:
+        raise HTTPException(status_code=422, detail="A model name is required for the selected provider.")
+    if settings.clear_model_api_key and api_key:
+        raise HTTPException(status_code=422, detail="Choose either a replacement model key or remove the saved key.")
+
+    effective_key = "" if settings.clear_model_api_key else api_key or current.api_key
+    if provider in {"openai-compatible", "anthropic"}:
+        if not effective_key:
+            raise HTTPException(status_code=422, detail="Enter a model API key before selecting this provider.")
+        if not consent:
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm that the selected external model provider will receive ticket content before saving.",
+            )
+    if _private_local_mode_enabled() and provider != "ollama-local":
+        raise HTTPException(status_code=403, detail="Private local mode only allows local Ollama models.")
+
+    if provider == "openai-compatible":
+        parsed = urlsplit(base_url)
+        host = (parsed.hostname or "").casefold()
+        try:
+            try:
+                address = ipaddress.ip_address(host) if host else None
+            except ValueError:
+                address = None
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Model endpoint URL is invalid.") from exc
+        loopback = (address is not None and address.is_loopback) or host == "localhost"
+        if (
+            not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+            or (parsed.scheme == "https" and port not in (None, 443))
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Model endpoint must use HTTPS, or HTTP on a local loopback host, without credentials, query, or fragment.",
+            )
+    elif provider == "ollama-local":
+        parsed = urlsplit(base_url)
+        host = (parsed.hostname or "").casefold()
+        try:
+            try:
+                address = ipaddress.ip_address(host) if host else None
+            except ValueError:
+                address = None
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Local Ollama endpoint URL is invalid.") from exc
+        loopback = (address is not None and address.is_loopback) or host == "localhost"
+        if (
+            parsed.scheme != "http"
+            or not loopback
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+            or port not in (None, 80, 11434)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Local Ollama must use an HTTP loopback URL on port 80 or 11434 without a path or credentials.",
+            )
+
+    values = {
+        "MODEL_PROVIDER": provider,
+        "MODEL_NAME": model_name or "Synthetic workflow model",
+        "MODEL_BASE_URL": base_url,
+        "ALLOW_EXTERNAL_TICKET_INFERENCE": str(bool(consent)).lower(),
+    }
+    return values, api_key, settings.clear_model_api_key
 
 
 def _jira_discovery_config(settings: JiraDiscoveryRequest) -> JiraConfig:
@@ -638,6 +773,7 @@ async def discover_jira_queues(settings: JiraDiscoveryRequest) -> list[dict[str,
 @app.put("/api/setup")
 async def save_setup(settings: SetupRequest) -> dict[str, object]:
     """Verify an optional Jira connection, then save local operator settings."""
+    model_env_values, model_api_key, remove_model_api_key = _validated_model_setup(settings)
     connection_values = (
         settings.jira_base_url,
         settings.jira_email,
@@ -645,6 +781,10 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         settings.jira_service_desk_id,
         settings.jira_queue_id,
         settings.knowledge_dir,
+        settings.model_provider or "",
+        settings.model_name or "",
+        settings.model_base_url or "",
+        settings.model_api_key,
     )
     if any(
         ord(character) < 32 or ord(character) == 127
@@ -707,12 +847,15 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "SUPPORT_N3_PLUS_KEYWORDS": settings.n3_plus_keywords.strip(),
         "SUPPORT_N3_KEYWORDS": settings.n3_keywords.strip(),
     }
+    env_values.update(model_env_values)
     try:
         async with SETUP_WRITE_LOCK:
             _persist_local_setup(
                 env_values,
                 settings.jira_api_token.strip(),
                 remove_api_token=not any(jira_fields),
+                model_api_key=model_api_key,
+                remove_model_api_key=remove_model_api_key,
             )
     except (OSError, UnicodeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="Local setup could not be saved. Check that the project folder is writable.") from exc
@@ -722,7 +865,13 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "jira_connected": bool(any(jira_fields) and token),
         "jira_queue_sample_count": queue_sample_count,
         "knowledge": knowledge_status(),
-        "message": "Settings saved on this machine. The API token is never returned to the browser.",
+        "model_provider": model_env_values.get("MODEL_PROVIDER", ProviderConfig.from_env().provider),
+        "model_name": model_env_values.get("MODEL_NAME", ProviderConfig.from_env().model),
+        "external_model_disclosure_accepted": model_env_values.get(
+            "ALLOW_EXTERNAL_TICKET_INFERENCE",
+            str(ProviderConfig.from_env().external_ticket_inference_allowed).lower(),
+        ) == "true",
+        "message": "Settings saved on this machine. Setup does not send a model request, and saved API keys are never returned to the browser.",
     }
 
 

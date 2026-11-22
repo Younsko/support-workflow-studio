@@ -180,9 +180,10 @@ export default function App() {
 
   async function refreshSetupStatus() {
     try {
-      const state = await api<Integrations>('/integrations/status')
+      const [state, modelState] = await Promise.all([api<Integrations>('/integrations/status'), api<Health>('/health')])
       const casesNow = state.jira_configured ? await api<SupportCase[]>('/itsm/sync', { method: 'POST' }) : await api<SupportCase[]>('/cases')
       setIntegrations(state)
+      setHealth(modelState)
       setCases((current) => state.jira_configured
         ? [...current.filter((item) => item.source !== 'jira-service-management'), ...casesNow]
         : casesNow)

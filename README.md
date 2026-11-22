@@ -69,7 +69,7 @@ The timeline retains the evidence, findings, revisions, and decision for each ru
 ## Configuration
 
 - **Bundled demo** uses deterministic responses and review results. The React workbench and FastAPI share a local origin, and SQLite stores cases and decisions under `.local/`.
-- **Live inference** supports local Ollama, OpenAI-compatible endpoints, and Anthropic. Per-run call limits and timeouts are configurable. [Provider setup](docs/provider-setup.md)
+- **Model setup** supports demo mode, loopback Ollama, OpenAI-compatible APIs (including Groq), and Anthropic. Keys stay on the local host, external ticket inference requires explicit opt-in, and saving setup does not send a model request. [Provider setup](docs/provider-setup.md) · [Data boundaries](docs/data-boundaries.md)
 - **Jira Service Management Cloud** can poll an operator-selected queue configured in the UI. Triage uses a local guidance allowlist, and sending ticket content to an external model requires explicit opt-in. [Connector setup](docs/connector-setup.md) · [Data boundaries](docs/data-boundaries.md)
 - **Private local mode** pairs loopback Ollama with manually entered cases. The prototype is designed for one local operator. Shared deployments and GitHub code changes are future work. [Production readiness](docs/production-readiness.md)
 
