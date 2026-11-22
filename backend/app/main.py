@@ -37,6 +37,7 @@ from .schemas import (
     WorkspaceMetrics,
 )
 from .store import LocalStore, configured_store
+from .workflow_api import router as workflow_definitions_router
 from .workflow import content_fingerprint, review_edited_draft, run_workflow
 
 load_dotenv()
@@ -403,11 +404,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Support Workflow Studio", version="0.1.0", lifespan=lifespan)
+app.include_router(workflow_definitions_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type"],
 )
 

@@ -1,0 +1,74 @@
+# SaaS readiness and delivery gates
+
+This document distinguishes the current local prototype from the hosted product direction. It is not a claim that hosted SaaS, tenant isolation, or encrypted browser-to-runner transport is already implemented.
+
+See [the security threat model](threat-model.md) for the current trust boundaries, verified prototype controls, and production security gates.
+
+## Current product boundary
+
+The repository currently provides a single-operator FastAPI and React prototype. It has a code-defined ticket runtime plus a separate visual workflow editor, a local versioned-definition API, synthetic demo cases, a Jira Service Management Cloud adapter, local knowledge-folder retrieval, and provider adapters for demo, OpenAI-compatible APIs, Anthropic, and local Ollama. A draft must pass deterministic review gates and receive a human decision; publishing a Jira reply is a separate action. JSM has not been validated against a real customer sandbox as part of this release.
+
+The current app is not a multi-user SaaS. The visual editor can save, validate, publish, and fork local workflow definitions, but those definitions do not drive the ticket runtime. They are stored in the existing local SQLite database. There is no sign-in, workspace membership or role enforcement, hosted control plane, runner protocol, remote knowledge connector, ServiceNow connector, end-to-end encrypted review channel, hosted billing, or production SLO. SQLite persistence is local to one host and the Jira monitor's queue state is in memory. Do not use this release to claim production readiness or large-scale capacity.
+
+### Implemented in this branch
+
+- Typed version-1 workflow graph definitions, deterministic graph/configuration validation, per-node configuration allowlists, read-only agent-tool allowlists, secret-key rejection, and a required approval gate on every path to a publish node.
+- A bilingual English/French visual workflow editor with a starter support flow, node palette and inspector, local validation, local save, version publish/fork controls, and an explicit status that live ticket execution is not connected.
+- Loopback-only `/api/v1/workflows` endpoints backed by local SQLite, revision checks against stale drafts, HTTP 409 conflicts when a fork already exists, immutable published snapshots, content hashes, and metadata-only local audit events.
+- Synthetic tests covering validation, persistence after registry reopen, stale revisions, publish/fork behavior, and the local HTTP API.
+
+These are local prototype capabilities. Local audit events are not tamper-evident and do not identify authenticated actors. They do not provide user authentication, tenant isolation, credentials or connector setup UI, model execution from the canvas, hosted SaaS persistence, or secure remote collaboration.
+The starter canvas includes unconfigured connection and model references. It can be saved locally, but publishing is correctly blocked until connector/model setup exists. Conditional branching is deferred until the editor can represent explicit branch ports and the runtime can execute them safely.
+
+## Target deployment boundary
+
+```mermaid
+flowchart LR
+  Browser[Workspace browser]
+  CP[EU hosted control plane\naccounts, workflow metadata, run metadata]
+  Relay[Opaque encrypted relay]
+  Runner[Customer Docker runner\nconnectors, models, durable runs]
+  ITSM[Jira Service Management\nthen ServiceNow]
+  KB[Confluence\nthen other approved sources]
+  Model[Workspace-selected model\nBYOK API or local Ollama]
+
+  Browser -->|workspace and workflow metadata| CP
+  Browser <-->|end-to-end encrypted ticket and draft payloads| Relay
+  Runner <-->|outbound authenticated session| Relay
+  Runner --> ITSM
+  Runner --> KB
+  Runner --> Model
+```
+
+Ticket and draft bodies must remain readable only to authorized browser clients and the customer runner in private mode. The hosted relay may route ciphertext and minimal routing metadata, but must not log or persist plaintext content. The customer-selected ITSM, knowledge service, and model provider receive only the content required for their configured workflow; setup must disclose that processing before activation. A cloud-readable processing mode, if added, must be a separate explicit workspace opt-in.
+
+End-to-end encryption is a release-blocking security design task. Use a reviewed protocol/library and document workspace-key creation, browser/runner enrollment, recovery, member removal, device revocation, and rotation before enabling the relay. Do not implement a home-grown cryptographic protocol or describe the relay as encrypted until independent tests verify that the control plane cannot decrypt payloads.
+
+## Release sequence
+
+1. **Workflow foundation:** typed definitions, validation, local immutable versions, and draft revision checks are implemented in this branch. Next add tenant-scoped persistence, audit events, migration discipline, and a runner that executes published versions. Keep existing `/api/workflows` ticket-run endpoints compatible until that runtime is proven.
+2. **Visual editor:** a bilingual local editor with a starter flow, palette, inspector, save, validate, publish, and fork actions is implemented in this branch. Next connect it to real configured connectors and execution traces after identity, connection management, policy enforcement, and the runner exist.
+3. **Team control plane:** add email sign-in, invitation flows, workspace isolation, and Owner/Admin/Builder/Operator/Approver/Viewer permissions. All workspace-owned rows and events must be tenant-scoped and authorization-checked server-side. Add rate limits and an audit trail before inviting external teams.
+4. **Customer runner:** package guided Docker deployment, outbound enrollment and heartbeat, revocable credentials, secret delivery to the runner, durable run/step state, retry leases, idempotency keys, and backup/restore instructions. Runner outages must pause safely and resume without duplicate external writes.
+5. **Private pilot:** implement and test the encrypted browser-runner review channel. Add Confluence after permission, freshness, and source-identity behavior are tested. Validate JSM read and separately approved publish against a dedicated test tenant using synthetic tickets only.
+6. **Team beta and production:** add ServiceNow, health and usage reporting, retention controls, support/incident runbooks, SLO and recovery targets, and measured concurrency/load limits. Add billing only after pilot demand is validated; defer SSO, Kubernetes, and multi-region until customer requirements justify them.
+7. **Career evidence:** publish an architecture and threat model, data-flow diagram, reproducible Docker guide, synthetic end-to-end demo, CI evidence, and benchmark results measured on named hardware/configuration. Keep claims tied to evidence.
+
+## Acceptance gates
+
+- Workspace data is isolated across users; every role has allow/deny tests for workflow changes, connector setup, approvals, and publishing.
+- Secrets never appear in browser telemetry, logs, workflow definitions, or the control-plane database. Connector credentials are delivered to and stored by the runner.
+- Published workflow versions are immutable; new edits create drafts. Invalid node configurations, dangling edges, cycles, and unsupported nodes are rejected before activation.
+- A runner restart or disconnect preserves run state. Duplicate events and retries do not duplicate external writes; uncertain write outcomes require inspection rather than automatic retry.
+- Approval refers to the precise draft/ticket snapshot shown to the approver. Changed source content invalidates that approval.
+- The relay/control plane cannot decrypt private review content. Revoked members/devices cannot fetch new workflow keys or payloads.
+- English and French cover onboarding, editor, validation, connector errors, review, and recovery flows.
+- CI builds the backend and frontend and runs synthetic security, connector-contract, workflow, and access-control tests. The protected release branch requires those checks and blocks force-push and deletion.
+- Load tests report throughput, latency, queue delay, and recovery behavior. No scale claim is made beyond measured results.
+
+## Scope guardrails
+
+- Public fixtures and demo recordings use synthetic data only. Never commit ticket exports, private identifiers, customer runbooks, credentials, or live model outputs containing real support text.
+- V1 agents are bounded workflow nodes with explicit prompts, model bindings, and allowlisted tools. No arbitrary code execution or unrestricted tool servers.
+- The starter path is one customer runner host and a small team workspace; horizontal workers and larger deployments follow measured need.
+- A green build proves software checks passed; it does not by itself prove tenant isolation, cryptographic privacy, or production readiness.

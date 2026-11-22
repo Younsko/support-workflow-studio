@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from .schemas import CaseRecord, WorkflowResult
@@ -13,45 +14,52 @@ class LocalStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
+            connection.commit()
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=10)
 
     def load_cases(self) -> dict[str, CaseRecord]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute("SELECT id, payload FROM cases ORDER BY rowid").fetchall()
         return {row[0]: CaseRecord.model_validate_json(row[1]) for row in rows}
 
     def load_runs(self) -> dict[str, WorkflowResult]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute("SELECT id, payload FROM runs ORDER BY rowid").fetchall()
         return {row[0]: WorkflowResult.model_validate_json(row[1]) for row in rows}
 
     def save_case(self, case: CaseRecord) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 "INSERT INTO cases(id, payload) VALUES (?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
                 (case.id, case.model_dump_json()),
             )
+            connection.commit()
 
     def save_run(self, run: WorkflowResult) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 "INSERT INTO runs(id, payload) VALUES (?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
                 (run.id, run.model_dump_json()),
             )
+            connection.commit()
+
+
+def configured_store_path() -> Path:
+    default_name = "private-state.sqlite3" if os.getenv("PRIVATE_LOCAL_MODE", "").lower() in {"1", "true", "yes"} else "state.sqlite3"
+    default_path = Path(__file__).resolve().parents[2] / ".local" / default_name
+    return Path(os.getenv("SUPPORT_WORKFLOW_DB_PATH", str(default_path))).expanduser()
 
 
 def configured_store() -> LocalStore:
-    default_name = "private-state.sqlite3" if os.getenv("PRIVATE_LOCAL_MODE", "").lower() in {"1", "true", "yes"} else "state.sqlite3"
-    default_path = Path(__file__).resolve().parents[2] / ".local" / default_name
-    return LocalStore(Path(os.getenv("SUPPORT_WORKFLOW_DB_PATH", str(default_path))).expanduser())
+    return LocalStore(configured_store_path())

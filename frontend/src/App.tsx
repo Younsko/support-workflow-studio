@@ -6,6 +6,7 @@ import {
   CloudDownload,
   X,
 } from 'lucide-react'
+import WorkflowBuilder from './WorkflowBuilder'
 
 type SupportCase = {
   id: string; title: string; requester: string; channel: string; created_at: string
@@ -59,7 +60,7 @@ export default function App() {
   const [metrics, setMetrics] = useState<WorkspaceMetrics | null>(null)
   const [productSignals, setProductSignals] = useState<ProductSignal[]>([])
   const [integrations, setIntegrations] = useState<Integrations | null>(null)
-  const [activeSection, setActiveSection] = useState<'inbox' | 'signals'>('inbox')
+  const [activeSection, setActiveSection] = useState<'workflow' | 'inbox' | 'signals'>('workflow')
   const [copiedSignal, setCopiedSignal] = useState<string | null>(null)
   const [signalCopyError, setSignalCopyError] = useState('')
   const [running, setRunning] = useState(false)
@@ -209,6 +210,7 @@ export default function App() {
         <div className="workspace-switch"><span className="workspace-avatar">{integrations?.jira_configured ? 'J' : 'L'}</span><span><b>{integrations?.jira_configured ? 'Support workspace' : 'Local lab'}</b><small>{integrations?.jira_configured ? 'Jira Service Management' : 'Synthetic workspace'}</small></span><ChevronDown size={15} /></div>
         <div className="nav-section-label">WORKSPACE</div>
         <nav className="side-nav">
+          <a className={`nav-item ${activeSection === 'workflow' ? 'active' : ''}`} href="#workflow-studio" onClick={() => setActiveSection('workflow')} aria-current={activeSection === 'workflow' ? 'page' : undefined}><Layers3 size={17} /> Workflows</a>
           <a className={`nav-item ${activeSection === 'inbox' ? 'active' : ''}`} href="#workbench" onClick={() => setActiveSection('inbox')} aria-current={activeSection === 'inbox' ? 'page' : undefined}><Inbox size={17} /> Inbox <span className="nav-count">{metrics?.open_cases ?? '—'}</span></a>
           <a className={`nav-item ${activeSection === 'signals' ? 'active' : ''}`} href="#product-signals" onClick={() => setActiveSection('signals')} aria-current={activeSection === 'signals' ? 'page' : undefined}><Activity size={17} /> Product signals</a>
         </nav>
@@ -220,11 +222,13 @@ export default function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><b>Support inbox</b></div>
+          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><b>{activeSection === 'workflow' ? 'Workflow studio' : activeSection === 'signals' ? 'Product signals' : 'Support inbox'}</b></div>
           <div className="topbar-right">{integrations?.private_local_mode && <span className="provider-pill live"><span className="status-dot" />PRIVATE LOCAL MODE</span>}<span className={`provider-pill ${health?.provider_mode === 'live' ? 'live' : ''}`}><span className="status-dot" />{health?.provider_mode === 'live' ? `${health.provider} · ${health.model}` : 'Demo mode'}</span>{integrations?.jira_configured && <><span className={`provider-pill ${integrations.jira_monitor.enabled ? 'live' : ''}`}><span className="status-dot" />{integrations.jira_monitor.enabled ? `Jira monitor · ${integrations.jira_monitor.auto_triage_enabled ? 'auto-triage on' : 'review to triage'}` : 'Jira monitor starting'}</span><span className={`provider-pill ${integrations.knowledge.configured && integrations.knowledge.available ? 'live' : ''}`}><span className="status-dot" />{integrations.knowledge.configured && integrations.knowledge.available ? `${integrations.knowledge.source_count} local KB sources` : 'Knowledge setup required'}</span></>}<button className="icon-button" title="Help"><CircleHelp size={18} /></button><div className="top-avatar">SR</div></div>
         </header>
 
-        <div className="content-wrap">
+        {activeSection === 'workflow' && <div id="workflow-studio" className="workflow-studio-page"><WorkflowBuilder /></div>}
+
+        <div className="content-wrap" style={activeSection === 'workflow' ? { display: 'none' } : undefined}>
           <section className="page-heading">
             <div><p className="eyebrow">SUPPORT AUTOMATION WORKFLOW</p><h1>Inbox</h1><p className="page-subtitle">Turn incoming requests into careful, evidence-backed support.</p></div>
             <div className="heading-actions">{integrations?.jira_configured && <button className="sync-button" onClick={syncJiraQueue} disabled={syncing}>{syncing ? <span className="spinner dark" /> : <CloudDownload size={15} />}{syncing ? 'Syncing' : 'Sync Jira queue'}</button>}<button className="primary-button" onClick={() => setShowIntake(true)}><Plus size={16} /> Add lab request</button></div>
