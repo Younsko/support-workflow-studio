@@ -20,7 +20,7 @@ WORKSPACE_ROLES = frozenset(
     {"Owner", "Admin", "Builder", "Operator", "Approver", "Viewer"}
 )
 _SAFE_WORKSPACE_ID = re.compile(r"^[a-f0-9]{32}$")
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 class WorkspaceNotFound(LookupError):
@@ -137,6 +137,11 @@ class PostgresControlPlaneStore:
                 revoked_at TIMESTAMPTZ
                 )""",
                 "CREATE INDEX IF NOT EXISTS cp_runners_by_workspace ON cp_runners(workspace_id, created_at, id)",
+            ),
+            3: (
+                "ALTER TABLE cp_runners ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+                "UPDATE cp_runners SET expires_at=created_at + interval '90 days' WHERE expires_at IS NULL",
+                "ALTER TABLE cp_runners ALTER COLUMN expires_at SET NOT NULL",
             ),
         }
         with self._connect() as connection:
@@ -637,6 +642,7 @@ class PostgresControlPlaneStore:
         *,
         name: str,
         token: str,
+        expires_at: datetime | None = None,
         now: datetime | None = None,
     ) -> dict[str, object]:
         self._validate_workspace_id(workspace_id)
@@ -644,6 +650,9 @@ class PostgresControlPlaneStore:
         if not display_name or len(display_name) > 100 or len(token) < 32:
             raise ValueError("Runner name or enrollment token is invalid.")
         timestamp = (now or datetime.now(UTC)).astimezone(UTC)
+        expiration = (expires_at or timestamp + timedelta(days=90)).astimezone(UTC)
+        if expiration <= timestamp or expiration > timestamp + timedelta(days=90):
+            raise ValueError("Runner credential expiry must be within 90 days.")
         runner_id = uuid4().hex
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         with self._connect() as connection:
@@ -654,8 +663,8 @@ class PostgresControlPlaneStore:
             self._require_admin(actor_role)
             connection.execute(
                 """INSERT INTO cp_runners(
-                    id, workspace_id, name, token_hash, created_by, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s)""",
+                    id, workspace_id, name, token_hash, created_by, created_at, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                 (
                     runner_id,
                     workspace_id,
@@ -663,6 +672,7 @@ class PostgresControlPlaneStore:
                     token_hash,
                     principal.subject,
                     timestamp,
+                    expiration,
                 ),
             )
             self._audit(
@@ -680,6 +690,7 @@ class PostgresControlPlaneStore:
             "name": display_name,
             "created_by": principal.subject,
             "created_at": timestamp.isoformat(),
+            "expires_at": expiration.isoformat(),
             "last_heartbeat_at": None,
             "revoked_at": None,
         }
@@ -691,7 +702,8 @@ class PostgresControlPlaneStore:
         with self._connect() as connection:
             self._require_member(connection, workspace_id, subject)
             rows = connection.execute(
-                """SELECT id, name, created_by, created_at, last_heartbeat_at, revoked_at
+                """SELECT id, name, created_by, created_at, expires_at,
+                          last_heartbeat_at, revoked_at
                    FROM cp_runners WHERE workspace_id=%s ORDER BY created_at, id""",
                 (workspace_id,),
             ).fetchall()
@@ -700,7 +712,12 @@ class PostgresControlPlaneStore:
                 **row,
                 **{
                     key: row[key].isoformat() if row[key] is not None else None
-                    for key in ("created_at", "last_heartbeat_at", "revoked_at")
+                    for key in (
+                        "created_at",
+                        "expires_at",
+                        "last_heartbeat_at",
+                        "revoked_at",
+                    )
                 },
             }
             for row in rows
@@ -754,12 +771,13 @@ class PostgresControlPlaneStore:
         supplied_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT token_hash, revoked_at FROM cp_runners WHERE id=%s FOR UPDATE",
+                "SELECT token_hash, expires_at, revoked_at FROM cp_runners WHERE id=%s FOR UPDATE",
                 (runner_id,),
             ).fetchone()
             if (
                 row is None
                 or row["revoked_at"] is not None
+                or row["expires_at"] <= timestamp
                 or not hmac.compare_digest(row["token_hash"], supplied_hash)
             ):
                 raise RunnerCredentialInvalid("Runner credential is invalid.")

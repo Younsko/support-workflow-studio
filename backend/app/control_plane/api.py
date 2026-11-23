@@ -94,6 +94,7 @@ class RunnerEnrollmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=100)
+    expires_in_days: int = Field(default=90, ge=1, le=90)
 
     @field_validator("name")
     @classmethod
@@ -344,7 +345,11 @@ def create_control_plane_app(
         response.headers["Pragma"] = "no-cache"
         token = secrets.token_urlsafe(32)
         runner = control_store.create_runner_enrollment(
-            workspace_id, principal, name=body.name, token=token
+            workspace_id,
+            principal,
+            name=body.name,
+            token=token,
+            expires_at=datetime.now(UTC) + timedelta(days=body.expires_in_days),
         )
         return {**runner, "token": token}
 

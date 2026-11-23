@@ -48,10 +48,21 @@ def test_runner_enrollment_and_heartbeat_mark_credentials_as_non_cacheable() -> 
             self.token: str | None = None
 
         def create_runner_enrollment(
-            self, workspace_id: str, principal: Principal, *, name: str, token: str
+            self,
+            workspace_id: str,
+            principal: Principal,
+            *,
+            name: str,
+            token: str,
+            expires_at,
         ) -> dict[str, object]:
             self.token = token
-            return {"id": "a" * 32, "workspace_id": workspace_id, "name": name}
+            return {
+                "id": "a" * 32,
+                "workspace_id": workspace_id,
+                "name": name,
+                "expires_at": expires_at.isoformat(),
+            }
 
         def record_runner_heartbeat(
             self, runner_id: str, token: str
@@ -77,3 +88,8 @@ def test_runner_enrollment_and_heartbeat_mark_credentials_as_non_cacheable() -> 
     assert enrollment.headers["cache-control"] == "no-store"
     assert heartbeat.status_code == 200
     assert heartbeat.headers["cache-control"] == "no-store"
+    invalid_expiry = client.post(
+        f"/api/v1/workspaces/{'b' * 32}/runners",
+        json={"name": "Too long", "expires_in_days": 91},
+    )
+    assert invalid_expiry.status_code == 422

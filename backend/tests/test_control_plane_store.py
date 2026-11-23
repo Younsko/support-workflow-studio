@@ -294,6 +294,54 @@ def test_runner_enrollment_requires_workspace_admin(store, owner) -> None:
         )
 
 
+def test_runner_credential_expiry_rejects_late_heartbeats(store, owner) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    now = datetime.now(UTC)
+    token = secrets.token_urlsafe(32)
+    runner = store.create_runner_enrollment(
+        workspace_id,
+        owner,
+        name="Short-lived runner",
+        token=token,
+        expires_at=now + timedelta(days=1),
+        now=now,
+    )
+
+    with pytest.raises(RunnerCredentialInvalid):
+        store.record_runner_heartbeat(
+            str(runner["id"]), token, now=now + timedelta(days=1)
+        )
+
+
+def test_runner_expiry_migration_backfills_existing_v2_rows(store, owner) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    created_at = datetime(2025, 1, 1, tzinfo=UTC)
+    runner = store.create_runner_enrollment(
+        workspace_id,
+        owner,
+        name="Existing v2 runner",
+        token=secrets.token_urlsafe(32),
+        now=created_at,
+    )
+
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE cp_runners SET created_at=%s WHERE id=%s",
+            (created_at, runner["id"]),
+        )
+        connection.execute("ALTER TABLE cp_runners DROP COLUMN expires_at")
+        connection.execute(
+            "DELETE FROM control_plane_schema_migrations WHERE version=3"
+        )
+
+    upgraded = PostgresControlPlaneStore(store.dsn)
+    listed = upgraded.list_runners(workspace_id, owner.subject)
+
+    assert listed[0]["expires_at"] == (created_at + timedelta(days=90)).isoformat()
+
+
 def test_control_plane_database_target_comparison_ignores_credentials() -> None:
     pytest.importorskip("psycopg")
 
