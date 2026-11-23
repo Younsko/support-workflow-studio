@@ -1939,11 +1939,15 @@ async def _publish_ticket_reply_locked(
             detail="A human must approve the 9/10+ draft before publishing",
         )
     if result.ticket_comment_published:
-        raise HTTPException(status_code=409, detail="This reply was already published")
-    if result.ticket_comment_outcome == "unknown":
-        raise HTTPException(
-            status_code=409, detail="Check the ticket manually before any retry"
-        )
+        if runner_auth_config is not None:
+            await _recheck_external_write_authorization(
+                runner_auth_config, runner_session_token
+            )
+        return {
+            "published": True,
+            "comment_id": result.ticket_comment_id,
+            "public": True,
+        }
     case = CASES.get(result.case_id)
     if (
         case is None
@@ -2005,7 +2009,7 @@ async def _publish_ticket_reply_locked(
             "comment_id": result.ticket_comment_id,
             "public": True,
         }
-    if reply_claim["state"] != "acquired":
+    if reply_claim["state"] != "acquired" or result.ticket_comment_outcome == "unknown":
         result.ticket_comment_outcome = "unknown"
         raise HTTPException(
             status_code=409,
@@ -2098,6 +2102,7 @@ async def _publish_ticket_reply_locked(
         ),
     )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
+
 
 
 async def _recheck_external_write_authorization(
