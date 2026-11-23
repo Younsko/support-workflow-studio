@@ -72,6 +72,8 @@ npm --prefix frontend run build
 On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000), select the synthetic sample ticket, and start the workflow. Demo mode needs no model API key or Jira account.
 
+For a local container preview, see the [self-hosted Compose guide](docs/self-hosted-container.md). It binds to loopback and keeps workflow state in a named local volume.
+
 To connect Jira Service Management or a knowledge source, start with the [connector setup guide](docs/connector-setup.md). Keys stay on the local machine in the Git-ignored `.env` file. External model use requires explicit consent to send the data required by the selected provider.
 
 ## Design and motion
@@ -82,7 +84,7 @@ The application is built with React, TypeScript, and CSS. The visual direction w
 
 Workflow definitions, the support runtime, ITSM adapters, and model providers are separate parts of the system. Demo records are synthetic. The current application is a local, single-operator prototype: workflow versions and run state use SQLite, and there is no team identity or multi-tenant isolation yet.
 
-This project does not yet claim production SaaS or large-scale readiness. The next steps include authentication and workspaces, a production runner and Postgres persistence, restartable step execution, approval roles, more connectors, private data paths, observability, backups, and load testing. See the [SaaS readiness plan](docs/saas-readiness.md) and [threat model](docs/threat-model.md) for details.
+This project does not yet claim production SaaS or large-scale readiness. SQLite is the default store, with an opt-in Postgres runtime store for one runner host. The Compose package is a local installation preview, not the planned authenticated customer runner. Remaining work includes identity and isolated workspaces, runner enrollment, resumable step execution, approval roles, more connectors, private data paths, observability, backups, and load testing. See the [SaaS readiness plan](docs/saas-readiness.md) and [threat model](docs/threat-model.md) for details.
 
 ## Development
 

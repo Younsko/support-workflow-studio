@@ -65,7 +65,13 @@ from .workflow_api import configured_workflow_registry
 from .workflow_api import router as workflow_definitions_router
 from .workflow_definitions import PublishedWorkflow
 
-load_dotenv()
+
+def _configured_env_path() -> Path:
+    default_path = Path(__file__).resolve().parents[2] / ".env"
+    return Path(os.getenv("SUPPORT_WORKFLOW_ENV_PATH", str(default_path))).expanduser()
+
+
+load_dotenv(_configured_env_path())
 
 
 class SetupRequest(BaseModel):
@@ -145,7 +151,7 @@ def _persist_local_setup(
     remove_confluence_api_token: bool = False,
 ) -> None:
     """Atomically update ignored local configuration, then apply it in-process."""
-    env_path = Path(__file__).resolve().parents[2] / ".env"
+    env_path = _configured_env_path()
     env_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         prefix=".env.", suffix=".tmp", dir=env_path.parent, delete=False

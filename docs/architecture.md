@@ -68,4 +68,4 @@ Approved and rejected states are terminal. A low-scoring draft can receive one m
 
 ## Production extension points
 
-Deployment target, identity provider, ticketing platform, tenant model, retention, legal basis, and SLOs are intentionally unspecified. They must be decided before adding connectors or real customer data. See [production-readiness.md](production-readiness.md).
+The product direction is an open-source customer-controlled runner with a hosted team control plane for support groups of roughly 5–50 people, EU-first hosting, Jira Service Management and Confluence for the first pilot, and bring-your-own model access. Identity vendor, legal basis, concrete retention periods, and SLOs still need explicit decisions. The current Compose package is a loopback-only installation preview; it is not the future enrolled runner. See [production-readiness.md](production-readiness.md).

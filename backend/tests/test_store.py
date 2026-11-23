@@ -46,6 +46,15 @@ def test_private_local_mode_rejects_postgres_storage(monkeypatch: pytest.MonkeyP
         configured_store()
 
 
+def test_configured_environment_file_uses_persistent_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    target = tmp_path / "runtime" / "settings.env"
+    monkeypatch.setenv("SUPPORT_WORKFLOW_ENV_PATH", str(target))
+
+    assert main._configured_env_path() == target
+
+
 def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path) -> None:
     store = LocalStore(tmp_path / "state.sqlite3")
     now = datetime.now(UTC)

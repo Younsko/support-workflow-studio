@@ -1,0 +1,33 @@
+services:
+  support-workflow-studio:
+    build:
+      context: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      SUPPORT_WORKFLOW_DB_PATH: /var/lib/support-workflow/state.sqlite3
+      SUPPORT_WORKFLOW_ENV_PATH: /var/lib/support-workflow/settings.env
+    volumes:
+      - workflow-state:/var/lib/support-workflow
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  workflow-state:
