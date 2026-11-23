@@ -9,6 +9,12 @@ type SetupValues = {
   jira_queue_id: string
   jira_token_configured: boolean
   knowledge_dir: string
+  knowledge_provider: 'local' | 'confluence'
+  confluence_base_url: string
+  confluence_email: string
+  confluence_space_keys: string
+  confluence_api_token_configured: boolean
+  confluence_ticket_search_allowed: boolean
   auto_triage_new_tickets: boolean
   poll_interval_seconds: number
   max_auto_triage_per_poll: number
@@ -26,7 +32,10 @@ type JiraOption = { id: string; name: string; key?: string }
 
 const emptySetup: SetupValues = {
   jira_base_url: '', jira_email: '', jira_service_desk_id: '', jira_queue_id: '',
-  jira_token_configured: false, knowledge_dir: '', auto_triage_new_tickets: false,
+  jira_token_configured: false, knowledge_dir: '', knowledge_provider: 'local',
+  confluence_base_url: '', confluence_email: '', confluence_space_keys: '',
+  confluence_api_token_configured: false, confluence_ticket_search_allowed: false,
+  auto_triage_new_tickets: false,
   poll_interval_seconds: 60, max_auto_triage_per_poll: 5,
   n1_keywords: '', n3_plus_keywords: '', n3_keywords: '', model_provider: 'demo',
   model_name: 'Synthetic workflow model', model_base_url: '', model_api_key_configured: false,
@@ -55,6 +64,9 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
   const [savedModelTarget, setSavedModelTarget] = useState('')
   const [token, setToken] = useState('')
   const [modelKey, setModelKey] = useState('')
+  const [confluenceToken, setConfluenceToken] = useState('')
+  const [checkingConfluence, setCheckingConfluence] = useState(false)
+  const [confluenceCheckMessage, setConfluenceCheckMessage] = useState('')
   const [clearModelKey, setClearModelKey] = useState(false)
   const [workspaces, setWorkspaces] = useState<JiraOption[]>([])
   const [queues, setQueues] = useState<JiraOption[]>([])
@@ -131,6 +143,25 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
     } finally { setDiscoveringQueues(false) }
   }
 
+  async function checkConfluenceConnection() {
+    setCheckingConfluence(true); setError(''); setConfluenceCheckMessage('')
+    try {
+      const check = await request<{ site_reachable: boolean; result_count: number }>('/setup/confluence/check', {
+        method: 'POST', body: JSON.stringify({
+          confluence_base_url: values.confluence_base_url,
+          confluence_email: values.confluence_email,
+          confluence_api_token: confluenceToken,
+          confluence_space_keys: values.confluence_space_keys,
+        }),
+      })
+      setConfluenceCheckMessage(check.site_reachable
+        ? `${t('Confluence site reachable')} · ${t('No ticket search was sent')} · ${t('Selected spaces are not individually verified')}`
+        : t('Confluence site could not be reached'))
+    } catch (reason) {
+      setError(reason instanceof Error ? t(reason.message) : t('Confluence connection check failed'))
+    } finally { setCheckingConfluence(false) }
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault()
     if (currentStep < 4) return
@@ -138,7 +169,7 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
     try {
       const outcome = await request<{ jira_connected: boolean; jira_queue_sample_count: number; knowledge: { mode: string; available: boolean; source_count: number }; model_provider: string; model_name: string }>('/setup', {
         method: 'PUT',
-        body: JSON.stringify({ ...values, jira_api_token: token, model_api_key: modelKey, clear_model_api_key: clearModelKey }),
+        body: JSON.stringify({ ...values, jira_api_token: token, confluence_api_token: confluenceToken, model_api_key: modelKey, clear_model_api_key: clearModelKey }),
       })
       setValues((current) => ({
         ...current,
@@ -148,14 +179,15 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
       setSavedModelTarget(modelKeyTarget(outcome.model_provider, values.model_base_url))
       setToken('')
       setModelKey('')
+      setConfluenceToken('')
       setClearModelKey(false)
       const modelSummary = locale === 'fr'
         ? `Paramètres du modèle enregistrés pour ${outcome.model_provider} · ${outcome.model_name}. Aucun appel au modèle n’a été effectué.`
         : `Model settings saved for ${outcome.model_provider} · ${outcome.model_name}. No model request was sent.`
       setResult(outcome.jira_connected
         ? locale === 'fr'
-          ? `File Jira vérifiée (${outcome.jira_queue_sample_count} ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'} d’exemple). ${outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} sources locales approuvées prêtes.` : 'Sélectionnez un dossier documentaire local approuvé avant le triage Jira.'} ${modelSummary}`
-          : `Jira queue verified (${outcome.jira_queue_sample_count} sample ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'}). ${outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} approved local sources ready.` : 'Select an approved local knowledge folder before Jira triage.'} ${modelSummary}`
+          ? `File Jira vérifiée (${outcome.jira_queue_sample_count} ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'} d’exemple). ${outcome.knowledge.mode === 'confluence' && outcome.knowledge.available ? 'Confluence configuré ; les termes minimisés seront envoyés lors du triage.' : outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} sources locales approuvées prêtes.` : 'Configurez une source documentaire locale approuvée ou Confluence avant le triage Jira.'} ${modelSummary}`
+          : `Jira queue verified (${outcome.jira_queue_sample_count} sample ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'}). ${outcome.knowledge.mode === 'confluence' && outcome.knowledge.available ? 'Confluence configured; minimized terms will be sent during triage.' : outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} approved local sources ready.` : 'Configure an approved local source or Confluence before Jira triage.'} ${modelSummary}`
         : `${t('Local settings saved.') } ${modelSummary}`)
       onSaved()
     } catch (reason) {
@@ -176,9 +208,11 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
     : values.jira_base_url
       ? `${values.jira_base_url}${values.jira_queue_id ? ` · ${t('Queue')} ${values.jira_queue_id}` : ''} · ${t('Configured · not tested')}`
       : t('Synthetic ticket queue · local demo')
-  const knowledgeSummary = values.knowledge_dir
-    ? `${values.knowledge_dir} · ${t('Will be checked on save')}`
-    : t('No custom folder · demo knowledge only')
+  const knowledgeSummary = values.knowledge_provider === 'confluence'
+    ? `${values.confluence_base_url || t('Confluence site not configured')} · ${values.confluence_space_keys || t('No spaces selected')} · ${values.confluence_ticket_search_allowed ? t('Ticket search disclosure accepted') : t('Ticket search disclosure required')} · ${confluenceCheckMessage || t('Connection not checked in this session')}`
+    : values.knowledge_dir
+      ? `${values.knowledge_dir} · ${t('Will be checked on save')}`
+      : t('No custom folder · demo knowledge only')
   const modelConnectionSummary = values.model_provider === 'demo'
     ? t('Demo provider · no external model call')
     : values.model_provider === 'ollama-local'
@@ -216,9 +250,20 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
                 : <div className="setup-two"><label>{t('Service desk')}<select value={values.jira_service_desk_id} onChange={(event) => void selectWorkspace(event.target.value)} disabled={values.private_local_mode || !workspaces.length || discoveringQueues}><option value="">{discoveringQueues ? t('Loading queues…') : workspaces.length ? t('Choose a service desk') : t('Find service desks first')}</option>{values.jira_service_desk_id && !workspaces.some((item) => item.id === values.jira_service_desk_id) && <option value={values.jira_service_desk_id}>{t('Saved selection · ')}{values.jira_service_desk_id}</option>}{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}{item.key ? ` · ${item.key}` : ''}</option>)}</select></label><label>{t('Queue')}<select value={values.jira_queue_id} onChange={(event) => update('jira_queue_id', event.target.value)} disabled={values.private_local_mode || !queues.length}><option value="">{queues.length ? t('Choose a queue') : t('Choose a service desk first')}</option>{values.jira_queue_id && !queues.some((item) => item.id === values.jira_queue_id) && <option value={values.jira_queue_id}>{t('Saved selection · ')}{values.jira_queue_id}</option>}{queues.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>}
               <small className="setup-help">{t('The token is written only to this machine’s ignored .env file. It is never sent back to the browser.')}</small>
             </section>}
-            {currentStep === 1 && <section className="setup-card"><div className="setup-card-title"><span>02</span><div><h3>{t('Approved knowledge')}</h3><p>{t('Use a local folder with the source allowlist file.')}</p></div></div>
-              <label>{t('Knowledge directory')}<input value={values.knowledge_dir} onChange={setField('knowledge_dir')} placeholder="C:\\support\\approved-runbooks" /></label>
-              <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('Only explicitly allowlisted Markdown and text sources are used for ticket evidence.')}</div>
+            {currentStep === 1 && <section className="setup-card"><div className="setup-card-title"><span>02</span><div><h3>{t('Approved knowledge')}</h3><p>{t('Choose a local allowlisted folder or a read-only Confluence Cloud source.')}</p></div></div>
+              <label>{t('Knowledge source')}<select value={values.knowledge_provider} onChange={(event) => { const provider = event.target.value as 'local' | 'confluence'; update('knowledge_provider', provider); if (provider === 'local') update('confluence_ticket_search_allowed', false); setConfluenceCheckMessage('') }}><option value="local">{t('Local approved folder')}</option><option value="confluence" disabled={values.private_local_mode}>{t('Confluence Cloud · read-only')}</option></select></label>
+              {values.knowledge_provider === 'local' ? <>
+                <label>{t('Knowledge directory')}<input value={values.knowledge_dir} onChange={setField('knowledge_dir')} placeholder="C:\\support\\approved-runbooks" /></label>
+                <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('Only explicitly allowlisted Markdown and text sources are used for ticket evidence.')}</div>
+              </> : <>
+                <div className="setup-two"><label>{t('Confluence Cloud site')}<input value={values.confluence_base_url} onChange={(event) => { update('confluence_base_url', event.target.value); update('confluence_ticket_search_allowed', false); setConfluenceCheckMessage('') }} placeholder="https://example.atlassian.net" autoComplete="url" /></label><label>{t('Account email')}<input value={values.confluence_email} onChange={(event) => { update('confluence_email', event.target.value); update('confluence_ticket_search_allowed', false); setConfluenceCheckMessage('') }} placeholder="agent@example.com" autoComplete="username" /></label></div>
+                <label>{t('Confluence API token')}<input type="password" value={confluenceToken} onChange={(event) => { setConfluenceToken(event.target.value); update('confluence_ticket_search_allowed', false); setConfluenceCheckMessage('') }} placeholder={values.confluence_api_token_configured ? t('Saved locally — leave blank to keep') : t('Paste a Confluence API token')} autoComplete="new-password" /></label>
+                <label>{t('Allowed space keys')}<input value={values.confluence_space_keys} onChange={(event) => { update('confluence_space_keys', event.target.value.toUpperCase()); update('confluence_ticket_search_allowed', false); setConfluenceCheckMessage('') }} placeholder="HELP, ITOPS" /><small className="setup-help">{t('Comma-separated keys limit searches to the selected spaces.')}</small></label>
+                <div className="setup-discovery-actions"><button className="setup-discover-button" type="button" onClick={() => void checkConfluenceConnection()} disabled={values.private_local_mode || checkingConfluence || !values.confluence_base_url || !values.confluence_email || !values.confluence_space_keys || (!confluenceToken && !values.confluence_api_token_configured)}>{checkingConfluence ? t('Checking Confluence…') : t('Check Confluence connection')}</button>{confluenceCheckMessage && <span className="setup-inline-status" role="status">{confluenceCheckMessage}</span>}</div>
+                <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('Connection check sends no ticket text. During triage, up to eight minimized search terms derived from the ticket are sent to Confluence. These terms are not anonymized and may include names or sensitive words. Page content is treated as untrusted evidence.')}</div>
+                <label className="setup-checkbox"><input type="checkbox" checked={values.confluence_ticket_search_allowed} onChange={(event) => update('confluence_ticket_search_allowed', event.target.checked)} /> {t('I approve sending minimized ticket search terms to this Confluence site and the selected spaces')}</label>
+                <small className="setup-help">{t('The API token stays in this machine’s ignored .env file. Saving does not contact Confluence; the connection check runs only when clicked.')}</small>
+              </>}
               <h4>{t('Automatic intake')}</h4>
               <label className="setup-checkbox"><input type="checkbox" checked={values.auto_triage_new_tickets} onChange={setField('auto_triage_new_tickets')} /> {t('Automatically draft triage for tickets arriving after setup is enabled')}</label>
               <div className="setup-two"><label>{t('Poll interval (seconds)')}<input type="number" min={15} max={900} value={values.poll_interval_seconds} onChange={setField('poll_interval_seconds')} /></label><label>{t('Draft limit per poll')}<input type="number" min={1} max={10} value={values.max_auto_triage_per_poll} onChange={setField('max_auto_triage_per_poll')} /></label></div>

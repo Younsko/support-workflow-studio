@@ -378,7 +378,8 @@ h1 { font-family: 'Newsreader', Georgia, serif; font-size: 30px; line-height: 1;
 .setup-card input:focus, .setup-card textarea:focus { outline: 2px solid #a9bb94; outline-offset: 1px; }
 .setup-card input::placeholder, .setup-card textarea::placeholder { color: #a6afa7; }
 .setup-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.setup-discovery-actions { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+.setup-discovery-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 10px 0; }
+.setup-inline-status { color: #55755f; font-size: 9px; line-height: 1.45; }
 .setup-discover-button, .setup-manual-toggle { border: 0; padding: 0; background: none; color: #557254; font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
 .setup-discover-button:disabled, .setup-manual-toggle:disabled { color: #9ba69a; cursor: not-allowed; opacity: .72; }
 .setup-manual-toggle { color: #89948b; font-weight: 500; }

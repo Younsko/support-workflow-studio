@@ -20,6 +20,12 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
 from .fixtures import demo_cases
+from .confluence import (
+    ConfluenceAdapter,
+    ConfluenceConfig,
+    ConfluenceConfigurationError,
+    ConfluenceRequestError,
+)
 from .itsm import (
     ITSMConfigurationError,
     ITSMOutcomeUnknown,
@@ -27,7 +33,7 @@ from .itsm import (
     JiraConfig,
     create_itsm_adapter,
 )
-from .knowledge import knowledge_status
+from .knowledge import KnowledgeConfigurationError, KnowledgeRequestError, knowledge_status
 from .providers import ProviderConfig, ProviderError, model_destination_scope
 from .schemas import (
     CaseRecord,
@@ -54,6 +60,12 @@ class SetupRequest(BaseModel):
     jira_service_desk_id: str = Field(default="", max_length=40)
     jira_queue_id: str = Field(default="", max_length=40)
     knowledge_dir: str = Field(default="", max_length=2048)
+    knowledge_provider: str = Field(default="local", max_length=20)
+    confluence_base_url: str = Field(default="", max_length=255)
+    confluence_email: str = Field(default="", max_length=255)
+    confluence_api_token: str = Field(default="", max_length=2000, repr=False)
+    confluence_space_keys: str = Field(default="", max_length=640)
+    confluence_ticket_search_allowed: bool = False
     auto_triage_new_tickets: bool = False
     poll_interval_seconds: int = Field(default=60, ge=15, le=900)
     max_auto_triage_per_poll: int = Field(default=5, ge=1, le=10)
@@ -73,6 +85,13 @@ class JiraDiscoveryRequest(BaseModel):
     jira_email: str = Field(max_length=255)
     jira_api_token: str = Field(default="", max_length=2000, repr=False)
     service_desk_id: str = Field(default="", max_length=40)
+
+
+class ConfluenceCheckRequest(BaseModel):
+    confluence_base_url: str = Field(max_length=255)
+    confluence_email: str = Field(max_length=255)
+    confluence_api_token: str = Field(default="", max_length=2000, repr=False)
+    confluence_space_keys: str = Field(max_length=640)
 
 
 JIRA_MONITOR_STATE: dict[str, object] = {
@@ -105,6 +124,8 @@ def _persist_local_setup(
     remove_api_token: bool,
     model_api_key: str = "",
     remove_model_api_key: bool = False,
+    confluence_api_token: str = "",
+    remove_confluence_api_token: bool = False,
 ) -> None:
     """Atomically update ignored local configuration, then apply it in-process."""
     env_path = Path(__file__).resolve().parents[2] / ".env"
@@ -127,6 +148,10 @@ def _persist_local_setup(
         elif remove_model_api_key:
             unset_key(str(staged_path), "MODEL_API_KEY")
             unset_key(str(staged_path), "MODEL_API_KEY_SCOPE")
+        if confluence_api_token:
+            set_key(str(staged_path), "CONFLUENCE_API_TOKEN", confluence_api_token, quote_mode="always")
+        elif remove_confluence_api_token:
+            unset_key(str(staged_path), "CONFLUENCE_API_TOKEN")
         if os.name != "nt":
             staged_path.chmod(0o600)
         os.replace(staged_path, env_path)
@@ -144,6 +169,10 @@ def _persist_local_setup(
     elif remove_model_api_key:
         os.environ.pop("MODEL_API_KEY", None)
         os.environ.pop("MODEL_API_KEY_SCOPE", None)
+    if confluence_api_token:
+        os.environ["CONFLUENCE_API_TOKEN"] = confluence_api_token
+    elif remove_confluence_api_token:
+        os.environ.pop("CONFLUENCE_API_TOKEN", None)
 
 
 def _save_case(case: CaseRecord) -> None:
@@ -682,6 +711,27 @@ async def get_setup() -> dict[str, object]:
     """Return editable setup state without ever returning the stored API token."""
     jira = JiraConfig.from_env()
     model = ProviderConfig.from_env()
+    confluence_base_url = os.getenv("CONFLUENCE_BASE_URL", "")
+    confluence_email = os.getenv("CONFLUENCE_USER_EMAIL", "")
+    confluence_spaces = os.getenv("CONFLUENCE_SPACE_KEYS", "")
+    confluence_token = os.getenv("CONFLUENCE_API_TOKEN", "").strip()
+    confluence_token_configured = False
+    try:
+        confluence_setup = ConfluenceConfig(
+            base_url=confluence_base_url,
+            email=confluence_email,
+            api_token=confluence_token or "configured-placeholder",
+            space_keys=tuple(value.strip() for value in confluence_spaces.split(",") if value.strip()),
+        )
+        confluence_setup.validate()
+        confluence_scope = confluence_setup.credential_scope
+        confluence_consent_scope = confluence_setup.consent_scope
+        confluence_token_configured = bool(confluence_token) and (
+            os.getenv("CONFLUENCE_API_TOKEN_SCOPE", "").strip() == confluence_scope
+        )
+    except ConfluenceConfigurationError:
+        confluence_scope = ""
+        confluence_consent_scope = ""
     return {
         "jira_base_url": jira.base_url,
         "jira_email": jira.email,
@@ -689,6 +739,16 @@ async def get_setup() -> dict[str, object]:
         "jira_queue_id": jira.queue_id,
         "jira_token_configured": bool(jira.api_token),
         "knowledge_dir": os.getenv("KNOWLEDGE_DIR", ""),
+        "knowledge_provider": os.getenv("KNOWLEDGE_PROVIDER", "local"),
+        "confluence_base_url": confluence_base_url,
+        "confluence_email": confluence_email,
+        "confluence_space_keys": confluence_spaces,
+        "confluence_api_token_configured": confluence_token_configured,
+        "confluence_ticket_search_allowed": (
+            _enabled_env("CONFLUENCE_TICKET_SEARCH_ALLOWED")
+            and bool(confluence_consent_scope)
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip() == confluence_consent_scope
+        ),
         "auto_triage_new_tickets": _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS"),
         "poll_interval_seconds": _monitor_interval_seconds(),
         "max_auto_triage_per_poll": _auto_triage_limit(),
@@ -862,6 +922,63 @@ def _jira_discovery_config(settings: JiraDiscoveryRequest) -> JiraConfig:
     return config
 
 
+def _confluence_setup_config(
+    base_url: str, email: str, api_token: str, space_keys: str
+) -> ConfluenceConfig:
+    spaces = tuple(value.strip().upper() for value in space_keys.split(",") if value.strip())
+    candidate = ConfluenceConfig(
+        base_url=base_url.strip().rstrip("/"),
+        email=email.strip(),
+        api_token=api_token.strip() or "configured-placeholder",
+        space_keys=spaces,
+    )
+    candidate.validate()
+    if not api_token.strip():
+        saved_token = os.getenv("CONFLUENCE_API_TOKEN", "").strip()
+        saved_scope = os.getenv("CONFLUENCE_API_TOKEN_SCOPE", "").strip()
+        if not saved_token or saved_scope != candidate.credential_scope:
+            raise HTTPException(
+                status_code=422,
+                detail="Enter a Confluence API token for this site, account, and space selection.",
+            )
+        candidate = ConfluenceConfig(
+            base_url=candidate.base_url,
+            email=candidate.email,
+            api_token=saved_token,
+            space_keys=candidate.space_keys,
+        )
+    return candidate
+
+
+@app.post("/api/setup/confluence/check")
+async def check_confluence_connection(settings: ConfluenceCheckRequest) -> dict[str, object]:
+    """Check Confluence reachability only after the operator clicks the check button."""
+    if _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Confluence connections are disabled while PRIVATE_LOCAL_MODE is active.",
+        )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in (settings.confluence_base_url, settings.confluence_email,
+                      settings.confluence_api_token, settings.confluence_space_keys)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Confluence setup fields contain unsupported control characters.")
+    try:
+        config = _confluence_setup_config(
+            settings.confluence_base_url,
+            settings.confluence_email,
+            settings.confluence_api_token,
+            settings.confluence_space_keys,
+        )
+        return await ConfluenceAdapter(config).check_connection()
+    except ConfluenceConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ConfluenceRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.post("/api/setup/jira/workspaces")
 async def discover_jira_workspaces(settings: JiraDiscoveryRequest) -> list[dict[str, str]]:
     """Discover accessible service desks without persisting submitted credentials."""
@@ -890,6 +1007,9 @@ async def discover_jira_queues(settings: JiraDiscoveryRequest) -> list[dict[str,
 async def save_setup(settings: SetupRequest) -> dict[str, object]:
     """Verify an optional Jira connection, then save local operator settings."""
     model_env_values, model_api_key, remove_model_api_key = _validated_model_setup(settings)
+    knowledge_provider = settings.knowledge_provider.strip().lower()
+    if knowledge_provider not in {"local", "confluence"}:
+        raise HTTPException(status_code=422, detail="Choose local files or Confluence Cloud as the knowledge source.")
     connection_values = (
         settings.jira_base_url,
         settings.jira_email,
@@ -897,6 +1017,10 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         settings.jira_service_desk_id,
         settings.jira_queue_id,
         settings.knowledge_dir,
+        settings.confluence_base_url,
+        settings.confluence_email,
+        settings.confluence_api_token,
+        settings.confluence_space_keys,
         settings.model_provider or "",
         settings.model_name or "",
         settings.model_base_url or "",
@@ -912,8 +1036,11 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         for character in value
     ):
         raise HTTPException(status_code=422, detail="Setup fields contain unsupported control characters.")
-    if _private_local_mode_enabled() and any((settings.jira_base_url, settings.jira_email, settings.jira_api_token)):
-        raise HTTPException(status_code=403, detail="Jira setup is disabled while PRIVATE_LOCAL_MODE is active.")
+    if _private_local_mode_enabled() and (
+        any((settings.jira_base_url, settings.jira_email, settings.jira_api_token))
+        or knowledge_provider == "confluence"
+    ):
+        raise HTTPException(status_code=403, detail="External connections are disabled while PRIVATE_LOCAL_MODE is active.")
 
     url = settings.jira_base_url.strip().rstrip("/")
     email = settings.jira_email.strip()
@@ -933,8 +1060,8 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         except ITSMRequestError as exc:
             raise HTTPException(status_code=502, detail=f"Jira connection check failed: {exc}") from exc
 
-    knowledge_dir = settings.knowledge_dir.strip()
-    if knowledge_dir:
+    knowledge_dir = settings.knowledge_dir.strip() if knowledge_provider == "local" else ""
+    if knowledge_provider == "local" and knowledge_dir:
         candidate_path = Path(knowledge_dir).expanduser()
         if not candidate_path.is_dir():
             raise HTTPException(status_code=422, detail="Knowledge directory does not exist on this machine.")
@@ -950,12 +1077,45 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         if not knowledge_check.get("available"):
             raise HTTPException(status_code=422, detail=str(knowledge_check.get("message") or "Knowledge source allowlist could not be verified."))
 
+    confluence_config: ConfluenceConfig | None = None
+    confluence_token = ""
+    confluence_consent = False
+    if knowledge_provider == "confluence":
+        try:
+            confluence_config = _confluence_setup_config(
+                settings.confluence_base_url,
+                settings.confluence_email,
+                settings.confluence_api_token,
+                settings.confluence_space_keys,
+            )
+        except ConfluenceConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        new_scope = confluence_config.consent_scope
+        prior_consent = (
+            _enabled_env("CONFLUENCE_TICKET_SEARCH_ALLOWED")
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip() == new_scope
+        )
+        confluence_consent = settings.confluence_ticket_search_allowed or prior_consent
+        if not confluence_consent:
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm that minimized ticket search terms will be sent to the selected Confluence site and spaces before saving.",
+            )
+        confluence_token = settings.confluence_api_token.strip()
+
     env_values = {
         "JSM_BASE_URL": url,
         "JSM_USER_EMAIL": email,
         "JSM_SERVICE_DESK_ID": desk,
         "JSM_QUEUE_ID": queue,
         "KNOWLEDGE_DIR": str(Path(knowledge_dir).expanduser().resolve()) if knowledge_dir else "",
+        "KNOWLEDGE_PROVIDER": knowledge_provider,
+        "CONFLUENCE_BASE_URL": confluence_config.normalized_base_url if confluence_config else "",
+        "CONFLUENCE_USER_EMAIL": confluence_config.email if confluence_config else "",
+        "CONFLUENCE_SPACE_KEYS": ",".join(confluence_config.normalized_space_keys) if confluence_config else "",
+        "CONFLUENCE_API_TOKEN_SCOPE": confluence_config.credential_scope if confluence_config else "",
+        "CONFLUENCE_TICKET_SEARCH_ALLOWED": str(confluence_consent).lower(),
+        "CONFLUENCE_SEARCH_CONSENT_SCOPE": confluence_config.consent_scope if confluence_config and confluence_consent else "",
         "JSM_AUTO_TRIAGE_NEW_TICKETS": str(settings.auto_triage_new_tickets).lower(),
         "JSM_POLL_INTERVAL_SECONDS": str(settings.poll_interval_seconds),
         "JSM_AUTO_TRIAGE_MAX_PER_POLL": str(settings.max_auto_triage_per_poll),
@@ -972,6 +1132,8 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
                 remove_api_token=not any(jira_fields),
                 model_api_key=model_api_key,
                 remove_model_api_key=remove_model_api_key,
+                confluence_api_token=confluence_token,
+                remove_confluence_api_token=knowledge_provider != "confluence",
             )
     except (OSError, UnicodeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="Local setup could not be saved. Check that the project folder is writable.") from exc
@@ -981,6 +1143,7 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "jira_connected": bool(any(jira_fields) and token),
         "jira_queue_sample_count": queue_sample_count,
         "knowledge": knowledge_status(),
+        "confluence_connection": "configured_not_checked" if knowledge_provider == "confluence" else "not_selected",
         "model_provider": model_env_values.get("MODEL_PROVIDER", ProviderConfig.from_env().provider),
         "model_name": model_env_values.get("MODEL_NAME", ProviderConfig.from_env().model),
         "external_model_disclosure_accepted": model_env_values.get(
@@ -1163,13 +1326,13 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
     if case.source == "jira-service-management":
         knowledge = knowledge_status()
         if (
-            knowledge["mode"] != "local"
+            knowledge["mode"] not in {"local", "confluence"}
             or not knowledge["configured"]
             or not knowledge["available"]
         ):
             raise HTTPException(
                 status_code=409,
-                detail="Jira triage requires an operator-provided local knowledge directory. Configure KNOWLEDGE_DIR with approved .md or .txt guidance before processing tickets.",
+                detail="Jira triage requires an available local or approved Confluence knowledge source. Configure and authorize a knowledge source before processing tickets.",
             )
     config = ProviderConfig.from_env()
     if (
@@ -1207,6 +1370,10 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             request.candidate_count,
             request.include_model_council,
         )
+    except KnowledgeConfigurationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except KnowledgeRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:

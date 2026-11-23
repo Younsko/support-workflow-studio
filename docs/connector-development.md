@@ -37,7 +37,7 @@ The ITSM contract is `ITSMAdapter` in `backend/app/itsm.py`. An implementation d
 
 ## Knowledge and model connectors
 
-Knowledge retrieval currently uses the selected local folder and its approved-source manifest; there is not yet a shared remote knowledge connector protocol. Model providers are adapters in `backend/app/providers.py`, but credentials are local configuration rather than runner-scoped secret references. These are separate contracts today. Do not claim Confluence, ServiceNow, arbitrary knowledge sources, or tenant-safe credential delivery until each path is implemented and tested.
+Knowledge retrieval supports an operator-selected local folder and a read-only, scope-limited Confluence Cloud adapter in `backend/app/confluence.py`. Confluence search sends up to eight minimized ticket terms only after explicit consent bound to the site and space selection. It caps result and response sizes, uses fixed API paths, rejects redirects, validates server-returned content IDs, rechecks page status and space, and preserves version metadata in evidence. Search terms may still include sensitive words; they are not anonymized. This local adapter does not provide a generic remote connector SDK, hosted secret delivery, tenant isolation, webhook freshness, or a production approval registry. Model providers are adapters in `backend/app/providers.py`, but credentials are local configuration rather than runner-scoped secret references.
 
 ## Before a connector is production-ready
 

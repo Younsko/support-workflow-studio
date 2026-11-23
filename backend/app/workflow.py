@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from .knowledge import retrieve
+from .knowledge import retrieve_configured
 from .providers import ProviderConfig, ProviderError, generate
 from .schemas import (
     CaseRecord,
@@ -49,6 +49,20 @@ def content_fingerprint(summary: str, description: str) -> str:
         [summary, description], ensure_ascii=False, separators=(",", ":")
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _evidence_summary(row: dict[str, str]) -> dict[str, str]:
+    summary = {
+        "id": row["id"],
+        "title": row["title"],
+        "excerpt": row["body"][:180],
+        "category": row.get("category", "local-knowledge"),
+    }
+    for key in ("source_version", "last_modified", "space_key"):
+        value = row.get(key)
+        if value:
+            summary[key] = value
+    return summary
 
 
 def _category(text: str) -> tuple[str, str, float]:
@@ -600,14 +614,14 @@ async def run_workflow(
         )
     )
 
-    evidence = retrieve(ticket_text)
+    evidence = await retrieve_configured(ticket_text)
     stages.append(
         StageRecord(
             id="evidence",
             label="Knowledge retrieval",
             status="complete",
             detail=(
-                f"{len(evidence)} local source(s) matched"
+                f"{len(evidence)} {('Confluence' if evidence and evidence[0].get('category') == 'confluence' else 'local')} source(s) matched"
                 if evidence
                 else "No approved knowledge source matched; human specialist review required"
             ),
@@ -1059,10 +1073,7 @@ async def run_workflow(
             support_level=support_level,
             support_route_reason=support_route_reason,
             confidence=confidence,
-            evidence=[
-                {"id": row["id"], "title": row["title"], "excerpt": row["body"][:180]}
-                for row in evidence
-            ],
+            evidence=[_evidence_summary(row) for row in evidence],
             plan=plan,
             plan_reviews=plan_reviews,
             draft="",
@@ -1328,10 +1339,7 @@ async def run_workflow(
         support_level=support_level,
         support_route_reason=support_route_reason,
         confidence=confidence,
-        evidence=[
-            {"id": row["id"], "title": row["title"], "excerpt": row["body"][:180]}
-            for row in evidence
-        ],
+        evidence=[_evidence_summary(row) for row in evidence],
         plan=plan,
         plan_reviews=plan_reviews,
         draft=selected,
