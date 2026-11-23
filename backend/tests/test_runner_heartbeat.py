@@ -27,7 +27,9 @@ def test_heartbeat_is_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         ("SUPPORT_CONTROL_PLANE_API_URL", "http://control.example.test"),
         ("SUPPORT_CONTROL_PLANE_API_URL", "https://control.example.test/path"),
+        ("SUPPORT_CONTROL_PLANE_API_URL", "https://control.example.test:invalid"),
         ("SUPPORT_RUNNER_ID", "not-a-runner-id"),
+        ("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", "token-with-newline\r\nInjected: true"),
         ("SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS", "10"),
         ("SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS", "many"),
     ],

@@ -240,6 +240,7 @@ Object.assign(french, {
   'misconfigured': 'configuration invalide',
   'not_configured': 'non configuré',
   'The runner credential must contain 32 to 128 characters.': 'L’identifiant du runner doit contenir entre 32 et 128 caractères.',
+  'The control-plane runner credential must be a 32 to 128 character URL-safe token.': 'L’identifiant du runner doit être un jeton URL-safe de 32 à 128 caractères.',
   'A valid enrolled runner ID is required for control-plane heartbeats.': 'Un ID de runner enrôlé valide est requis pour les signaux au plan de contrôle.',
   'The control-plane runner settings are incomplete or invalid.': 'Les paramètres du runner pour le plan de contrôle sont incomplets ou invalides.',
   'The control plane is unreachable.': 'Le plan de contrôle est injoignable.',

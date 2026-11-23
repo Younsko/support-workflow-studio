@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 import httpx
 
 _RUNNER_ID = re.compile(r"^[a-f0-9]{32}$")
+_RUNNER_TOKEN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
 
 class RunnerHeartbeatConfigurationError(RuntimeError):
@@ -43,23 +44,32 @@ class RunnerHeartbeatConfig:
         cls, api_url: str, runner_id: str, token: str, interval_seconds: str | int
     ) -> RunnerHeartbeatConfig:
         token = token.strip()
-        if len(token) < 32 or len(token) > 128:
+        if not _RUNNER_TOKEN.fullmatch(token):
             raise RunnerHeartbeatConfigurationError(
-                "The control-plane runner credential must contain 32 to 128 characters."
+                "The control-plane runner credential must be a 32 to 128 character URL-safe token."
             )
 
         api_url = api_url.strip()
-        parsed = urlsplit(api_url)
         try:
-            loopback = bool(parsed.hostname) and (
-                ipaddress.ip_address(parsed.hostname).is_loopback
-                if parsed.hostname != "localhost"
+            parsed = urlsplit(api_url)
+            hostname = parsed.hostname
+            port = parsed.port
+        except ValueError as exc:
+            raise RunnerHeartbeatConfigurationError(
+                "The control-plane API URL is invalid."
+            ) from exc
+        try:
+            loopback = bool(hostname) and (
+                ipaddress.ip_address(hostname).is_loopback
+                if hostname != "localhost"
                 else True
             )
         except ValueError:
             loopback = False
         if (
-            not parsed.hostname
+            not hostname
+            or (port is not None and not 1 <= port <= 65535)
+            or any(character.isspace() or ord(character) < 32 for character in api_url)
             or parsed.username
             or parsed.password
             or parsed.path not in {"", "/"}
