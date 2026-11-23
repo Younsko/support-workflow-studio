@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -119,6 +120,43 @@ def test_expired_published_run_lease_can_be_reclaimed_with_fencing(tmp_path) -> 
     with pytest.raises(ValueError, match="lease was lost"):
         store.save_run(_minimal_run("RUN-01020304"), execution_claim=("request-2", "worker-old"))
     store.fail_published_run_claim("request-2", "worker-new", now + timedelta(seconds=8))
+
+
+def test_old_published_claim_schema_migrates_request_fingerprint(tmp_path) -> None:
+    database = tmp_path / "legacy-state.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """CREATE TABLE published_run_claims (
+                idempotency_key TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL UNIQUE,
+                case_id TEXT NOT NULL,
+                workflow_id TEXT NOT NULL,
+                workflow_version INTEGER NOT NULL,
+                workflow_content_hash TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN ('running', 'completed', 'failed')),
+                lease_owner TEXT,
+                lease_until TEXT,
+                attempt INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            )"""
+        )
+        connection.execute(
+            """INSERT INTO published_run_claims (
+                idempotency_key, run_id, case_id, workflow_id, workflow_version,
+                workflow_content_hash, state, attempt, updated_at
+            ) VALUES ('legacy-request', 'RUN-LEGACY1', 'SUP-4821', 'support-intake', 1, ?, 'failed', 1, ?)""",
+            ("a" * 64, datetime.now(UTC).isoformat()),
+        )
+
+    LocalStore(database)
+
+    with sqlite3.connect(database) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(published_run_claims)")}
+        migrated = connection.execute(
+            "SELECT request_fingerprint FROM published_run_claims WHERE idempotency_key='legacy-request'"
+        ).fetchone()
+    assert "request_fingerprint" in columns
+    assert migrated == ("",)
 
 
 def test_execution_step_checkpoints_persist_without_ticket_content(tmp_path) -> None:
