@@ -43,6 +43,7 @@ def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path
         "workflow_id": "support-intake",
         "workflow_version": 3,
         "workflow_content_hash": "a" * 64,
+        "request_fingerprint": "c" * 64,
     }
     first = store.claim_published_run(
         **binding,
@@ -59,6 +60,13 @@ def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path
         now=now + timedelta(seconds=5),
         lease_seconds=30,
     )["state"] == "in_progress"
+    with pytest.raises(ValueError, match="different case, workflow, or request options"):
+        store.claim_published_run(
+            **{**binding, "request_fingerprint": "d" * 64},
+            proposed_run_id="RUN-IGNORED4",
+            lease_owner="worker-b",
+            now=now + timedelta(seconds=5),
+        )
 
     run = _minimal_run("RUN-A1B2C3D4")
     run.case_id = "JSM-123"
@@ -87,6 +95,7 @@ def test_expired_published_run_lease_can_be_reclaimed_with_fencing(tmp_path) -> 
         "workflow_id": "support-intake",
         "workflow_version": 1,
         "workflow_content_hash": "b" * 64,
+        "request_fingerprint": "e" * 64,
     }
     original = store.claim_published_run(
         **binding,
@@ -104,9 +113,43 @@ def test_expired_published_run_lease_can_be_reclaimed_with_fencing(tmp_path) -> 
     )
     assert original["run_id"] == reclaimed["run_id"]
     assert reclaimed["attempt"] == 2
+    assert store.renew_published_run_claim(
+        "request-2", "worker-new", now + timedelta(seconds=7)
+    ) is True
     with pytest.raises(ValueError, match="lease was lost"):
         store.save_run(_minimal_run("RUN-01020304"), execution_claim=("request-2", "worker-old"))
-    store.fail_published_run_claim("request-2", "worker-new", now + timedelta(seconds=7))
+    store.fail_published_run_claim("request-2", "worker-new", now + timedelta(seconds=8))
+
+
+def test_execution_step_checkpoints_persist_without_ticket_content(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    timestamp = datetime.now(UTC)
+
+    store.record_execution_step(
+        run_id="RUN-STEP1234",
+        attempt=2,
+        ordinal=0,
+        stage_id="intake",
+        status="complete",
+        elapsed_ms=125,
+        recorded_at=timestamp,
+    )
+    store.record_execution_step(
+        run_id="RUN-STEP1234",
+        attempt=2,
+        ordinal=1,
+        stage_id="knowledge",
+        status="complete",
+        elapsed_ms=40,
+        recorded_at=timestamp,
+    )
+
+    steps = store.list_execution_steps("RUN-STEP1234")
+    assert [(step["attempt"], step["ordinal"], step["stage_id"]) for step in steps] == [
+        (2, 0, "intake"),
+        (2, 1, "knowledge"),
+    ]
+    assert all("payload" not in step and "detail" not in step for step in steps)
 
 
 def test_local_state_survives_reload_and_keeps_human_decision(tmp_path, monkeypatch) -> None:

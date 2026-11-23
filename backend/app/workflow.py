@@ -7,6 +7,7 @@ import os
 import re
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -569,6 +570,21 @@ async def _model_call(
     )
 
 
+class _StageJournal(list[StageRecord]):
+    def __init__(self, callback: Callable[[StageRecord, int], None] | None = None) -> None:
+        super().__init__()
+        self._callback = callback
+
+    def append(self, stage: StageRecord) -> None:
+        super().append(stage)
+        if self._callback is not None:
+            self._callback(stage, len(self) - 1)
+
+    def extend(self, stages: list[StageRecord]) -> None:
+        for stage in stages:
+            self.append(stage)
+
+
 async def run_workflow(
     case: CaseRecord,
     config: ProviderConfig,
@@ -579,13 +595,14 @@ async def run_workflow(
     agent_role: str | None = None,
     agent_instructions: str | None = None,
     run_id: str | None = None,
+    stage_callback: Callable[[StageRecord, int], None] | None = None,
 ) -> WorkflowResult:
     started = time.perf_counter()
     run_id = run_id or f"RUN-{uuid.uuid4().hex[:8].upper()}"
     reviewed_snapshot_hash = source_snapshot_hash or content_fingerprint(
         case.title, case.body, case.status
     )
-    stages: list[StageRecord] = []
+    stages: list[StageRecord] = _StageJournal(stage_callback)
     counter = [0]
     ticket_text = f"Title: {case.title}\nImpact: {case.impact}\nRequest: {case.body}"
     category, urgency, confidence = _category(ticket_text)

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
+import json
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -201,6 +204,29 @@ def _save_run(
 ) -> None:
     if STATE_STORE is not None:
         STATE_STORE.save_run(run, audit_event=audit_event, execution_claim=execution_claim)
+
+
+def _record_published_execution_stage(
+    store: LocalStore,
+    idempotency_key: str,
+    lease_owner: str,
+    run_id: str,
+    attempt: int,
+    stage: StageRecord,
+    ordinal: int,
+) -> None:
+    now = datetime.now(UTC)
+    if not store.renew_published_run_claim(idempotency_key, lease_owner, now):
+        raise RuntimeError("Published workflow execution lease expired or was transferred.")
+    store.record_execution_step(
+        run_id=run_id,
+        attempt=attempt,
+        ordinal=ordinal,
+        stage_id=stage.id,
+        status=stage.status,
+        elapsed_ms=stage.elapsed_ms,
+        recorded_at=now,
+    )
 
 
 def _enabled_env(name: str) -> bool:
@@ -1384,6 +1410,17 @@ async def start_published_workflow(
             raise HTTPException(status_code=409, detail="Workflow execution bindings changed; reload and validate again.")
         store = STATE_STORE or configured_store()
         lease_owner = uuid4().hex
+        request_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "candidate_count": request.candidate_count,
+                    "include_model_council": request.include_model_council,
+                    "bindings_fingerprint": plan.bindings_fingerprint,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
         try:
             claim = store.claim_published_run(
                 idempotency_key=request.idempotency_key,
@@ -1392,6 +1429,7 @@ async def start_published_workflow(
                 workflow_id=workflow_id,
                 workflow_version=request.workflow_version,
                 workflow_content_hash=request.workflow_content_hash,
+                request_fingerprint=request_fingerprint,
                 lease_owner=lease_owner,
                 now=datetime.now(UTC),
                 lease_seconds=3600,
@@ -1413,6 +1451,11 @@ async def start_published_workflow(
                 published_snapshot=published,
                 execution_claim=(request.idempotency_key, lease_owner),
                 execution_run_id=str(claim["run_id"]),
+                execution_attempt=int(claim["attempt"]),
+                stage_callback=lambda stage, ordinal: _record_published_execution_stage(
+                    store, request.idempotency_key, lease_owner, str(claim["run_id"]),
+                    int(claim["attempt"]), stage, ordinal,
+                ),
             )
         except Exception:
             store.fail_published_run_claim(request.idempotency_key, lease_owner, datetime.now(UTC))
@@ -1426,6 +1469,8 @@ async def _start_workflow_locked(
     published_snapshot: PublishedWorkflow | None = None,
     execution_claim: tuple[str, str] | None = None,
     execution_run_id: str | None = None,
+    execution_attempt: int = 1,
+    stage_callback: Callable[[StageRecord, int], None] | None = None,
 ) -> WorkflowResult:
     case = CASES.get(request.case_id)
     if not case:
@@ -1517,6 +1562,7 @@ async def _start_workflow_locked(
             agent_role=execution_plan.agent_role if execution_plan else None,
             agent_instructions=execution_plan.agent_instructions if execution_plan else None,
             run_id=execution_run_id,
+            stage_callback=stage_callback,
         )
     except KnowledgeConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1763,6 +1809,14 @@ async def workflow_run_events(run_id: str) -> list[dict[str, object]]:
     if STATE_STORE is None:
         return []
     return STATE_STORE.list_run_events(run_id)
+
+
+@app.get("/api/workflows/{run_id}/execution-steps")
+async def workflow_execution_steps(run_id: str) -> list[dict[str, object]]:
+    """Return content-free per-attempt stage checkpoints for local recovery inspection."""
+    if STATE_STORE is None:
+        raise HTTPException(status_code=503, detail="Local run storage is not ready.")
+    return STATE_STORE.list_execution_steps(run_id)
 
 
 @app.post("/api/workflows/{run_id}/decision", response_model=WorkflowResult)

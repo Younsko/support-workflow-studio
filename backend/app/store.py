@@ -83,11 +83,27 @@ class LocalStore:
                     workflow_id TEXT NOT NULL,
                     workflow_version INTEGER NOT NULL,
                     workflow_content_hash TEXT NOT NULL,
+                    request_fingerprint TEXT NOT NULL DEFAULT '',
                     state TEXT NOT NULL CHECK(state IN ('running', 'completed', 'failed')),
                     lease_owner TEXT,
                     lease_until TEXT,
                     attempt INTEGER NOT NULL,
                     updated_at TEXT NOT NULL
+                )"""
+            )
+            claim_columns = {row[1] for row in connection.execute("PRAGMA table_info(published_run_claims)")}
+            if "request_fingerprint" not in claim_columns:
+                connection.execute("ALTER TABLE published_run_claims ADD COLUMN request_fingerprint TEXT NOT NULL DEFAULT ''")
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS workflow_execution_steps (
+                    run_id TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    ordinal INTEGER NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('complete', 'review', 'warning', 'pending', 'failed')),
+                    elapsed_ms INTEGER NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    PRIMARY KEY (run_id, attempt, ordinal)
                 )"""
             )
             connection.execute(
@@ -138,6 +154,7 @@ class LocalStore:
         workflow_id: str,
         workflow_version: int,
         workflow_content_hash: str,
+        request_fingerprint: str,
         lease_owner: str,
         now: datetime,
         lease_seconds: int = 300,
@@ -152,7 +169,7 @@ class LocalStore:
         ):
             if not isinstance(value, str) or not _SAFE_RUN_ID.fullmatch(value):
                 raise ValueError(f"{label} must be a short stable identifier.")
-        if workflow_version < 1 or not re.fullmatch(r"[a-f0-9]{64}", workflow_content_hash):
+        if workflow_version < 1 or not re.fullmatch(r"[a-f0-9]{64}", workflow_content_hash) or not re.fullmatch(r"[a-f0-9]{64}", request_fingerprint):
             raise ValueError("Published workflow identity is invalid.")
         if lease_seconds < 1 or lease_seconds > 3600:
             raise ValueError("lease_seconds must be between 1 and 3600.")
@@ -169,8 +186,8 @@ class LocalStore:
             binding = (case_id, workflow_id, workflow_version, workflow_content_hash)
             if row is not None:
                 stored = (row["case_id"], row["workflow_id"], row["workflow_version"], row["workflow_content_hash"])
-                if stored != binding:
-                    raise ValueError("Idempotency key was already used for a different case or published workflow.")
+                if stored != binding or row["request_fingerprint"] != request_fingerprint:
+                    raise ValueError("Idempotency key was already used for a different case, workflow, or request options.")
                 if row["state"] == "completed":
                     connection.commit()
                     return {"state": "completed", "run_id": row["run_id"], "attempt": row["attempt"]}
@@ -189,10 +206,10 @@ class LocalStore:
                 connection.execute(
                     """INSERT INTO published_run_claims(
                         idempotency_key, run_id, case_id, workflow_id, workflow_version,
-                        workflow_content_hash, state, lease_owner, lease_until, attempt, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)""",
+                        workflow_content_hash, request_fingerprint, state, lease_owner, lease_until, attempt, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)""",
                     (idempotency_key, run_id, case_id, workflow_id, workflow_version,
-                     workflow_content_hash, lease_owner, lease_until, attempt, now_value),
+                     workflow_content_hash, request_fingerprint, lease_owner, lease_until, attempt, now_value),
                 )
             connection.commit()
             return {"state": "acquired", "run_id": run_id, "attempt": attempt, "lease_owner": lease_owner}
@@ -210,6 +227,55 @@ class LocalStore:
                 (now.astimezone(UTC).isoformat(), idempotency_key, lease_owner),
             )
             connection.commit()
+
+    def renew_published_run_claim(
+        self, idempotency_key: str, lease_owner: str, now: datetime, *, lease_seconds: int = 3600
+    ) -> bool:
+        if lease_seconds < 1 or lease_seconds > 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600.")
+        now_utc = now.astimezone(UTC)
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                "UPDATE published_run_claims SET lease_until=?, updated_at=? WHERE idempotency_key=? AND lease_owner=? AND state='running' AND lease_until>?",
+                ((now_utc + timedelta(seconds=lease_seconds)).isoformat(), now_utc.isoformat(),
+                 idempotency_key, lease_owner, now_utc.isoformat()),
+            )
+            connection.commit()
+        return cursor.rowcount == 1
+
+    def record_execution_step(
+        self,
+        *,
+        run_id: str,
+        attempt: int,
+        ordinal: int,
+        stage_id: str,
+        status: str,
+        elapsed_ms: int,
+        recorded_at: datetime | None = None,
+    ) -> None:
+        """Persist content-free progress so interrupted runs have a durable checkpoint trail."""
+        if not _SAFE_RUN_ID.fullmatch(run_id) or not _SAFE_RUN_ID.fullmatch(stage_id):
+            raise ValueError("run_id and stage_id must be short stable identifiers.")
+        if attempt < 1 or ordinal < 0 or elapsed_ms < 0:
+            raise ValueError("Execution step counters cannot be negative.")
+        if status not in {"complete", "review", "warning", "pending", "failed"}:
+            raise ValueError("Execution step status is unsupported.")
+        with closing(self._connect()) as connection:
+            connection.execute(
+                "INSERT INTO workflow_execution_steps(run_id, attempt, ordinal, stage_id, status, elapsed_ms, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (run_id, attempt, ordinal, stage_id, status, elapsed_ms,
+                 (recorded_at or datetime.now(UTC)).astimezone(UTC).isoformat()),
+            )
+            connection.commit()
+
+    def list_execution_steps(self, run_id: str) -> list[dict[str, object]]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT run_id, attempt, ordinal, stage_id, status, elapsed_ms, recorded_at FROM workflow_execution_steps WHERE run_id=? ORDER BY attempt, ordinal",
+                (run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def save_case(self, case: CaseRecord) -> None:
         with closing(self._connect()) as connection:

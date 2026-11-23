@@ -184,12 +184,14 @@ def test_run_endpoint_compiles_snapshot_before_case_lookup(
     tmp_path, monkeypatch: pytest.MonkeyPatch, execution_bindings: ProviderConfig
 ) -> None:
     from app import main
+    from app.store import LocalStore
 
     registry = WorkflowRegistry(tmp_path / "workflow.sqlite3")
     definition = starter()
     registry.save_draft(definition, expected_revision=None)
     published = registry.publish_draft(definition, expected_revision=1)
     monkeypatch.setattr(main, "configured_workflow_registry", lambda: registry)
+    monkeypatch.setattr(main, "STATE_STORE", LocalStore(tmp_path / "run-state.sqlite3"))
     monkeypatch.setenv("MODEL_PROVIDER", "demo")
     monkeypatch.setenv("MODEL_NAME", execution_bindings.model)
     request = PublishedWorkflowRunRequest(
