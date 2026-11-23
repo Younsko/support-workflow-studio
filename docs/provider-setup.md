@@ -12,6 +12,16 @@ Supported modes:
 
 Some product subscriptions do not include API access or API credits. Check the provider's current account and billing terms. Model endpoints may receive ticket content; only use synthetic data in this demo.
 
+The Setup UI writes non-secret scope hashes beside a saved API key and external-content consent. The runtime rejects a scoped key or consent if the selected provider or endpoint no longer matches. Existing `.env` entries without scopes fail closed until you re-enter the API key and confirm the destination in Setup. Changing providers or endpoints requires a fresh key and renewed consent; do not copy the old scope value to a new destination. The status only confirms local configuration, not network reachability or model availability.
+
+For Jira tickets, selecting an external model without current credentials or destination-scoped consent blocks the run. The app does not silently turn that request into a demo-model run.
+
+For a fully headless setup, calculate the scope for the exact selected provider and endpoint and set that hash as both `MODEL_API_KEY_SCOPE` and `MODEL_CONSENT_SCOPE` after reviewing the destination:
+
+```sh
+python -c "import sys; sys.path.insert(0, 'backend'); from app.providers import model_destination_scope; print(model_destination_scope('openai-compatible', 'https://api.groq.com/openai/v1'))"
+```
+
 Example `.env` for a compatible endpoint:
 
 ```dotenv

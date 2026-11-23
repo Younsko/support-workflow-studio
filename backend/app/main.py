@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import ipaddress
 import os
 import shutil
@@ -29,7 +28,7 @@ from .itsm import (
     create_itsm_adapter,
 )
 from .knowledge import knowledge_status
-from .providers import ProviderConfig, ProviderError
+from .providers import ProviderConfig, ProviderError, model_destination_scope
 from .schemas import (
     CaseRecord,
     DecisionRequest,
@@ -159,14 +158,6 @@ def _save_run(run: WorkflowResult) -> None:
 
 def _enabled_env(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() in {"1", "true", "yes"}
-
-
-def _model_destination_scope(provider: str, base_url: str) -> str:
-    """Stable, non-secret binding for a model key and data disclosure decision."""
-    destination = base_url.strip().rstrip("/")
-    if provider == "anthropic":
-        destination = "https://api.anthropic.com/v1/messages"
-    return hashlib.sha256(f"{provider}\0{destination}".encode("utf-8")).hexdigest()
 
 
 def _monitor_checkpoint() -> dict[str, object]:
@@ -438,6 +429,15 @@ async def _poll_jira_once() -> None:
             _tag_local_case(case.id, "studio-triage-paused-consent", True)
         _save_monitor_checkpoint()
         return
+    if provider.requires_external_ticket_consent and not provider.live:
+        JIRA_MONITOR_STATE["last_error"] = (
+            "Auto-triage paused: selected external model credentials are not configured "
+            "for the current provider destination."
+        )
+        for case in pending_cases:
+            _tag_local_case(case.id, "studio-triage-paused-model-setup", True)
+        _save_monitor_checkpoint()
+        return
 
     ordered_pending_cases = sorted(
         pending_cases, key=lambda item: item.created_at, reverse=True
@@ -694,7 +694,7 @@ async def get_setup() -> dict[str, object]:
         "model_provider": model.provider,
         "model_name": model.model,
         "model_base_url": model.base_url,
-        "model_api_key_configured": bool(os.getenv("MODEL_API_KEY", "").strip()),
+        "model_api_key_configured": bool(model.api_key),
         "external_model_disclosure_accepted": model.external_ticket_inference_allowed,
         "private_local_mode": _private_local_mode_enabled(),
     }
@@ -711,14 +711,11 @@ def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str,
         else current.base_url
     ).strip().rstrip("/")
     api_key = settings.model_api_key.strip()
-    target_scope = _model_destination_scope(provider, base_url)
-    current_scope = _model_destination_scope(current.provider, current.base_url)
+    target_scope = model_destination_scope(provider, base_url)
+    current_scope = model_destination_scope(current.provider, current.base_url)
     saved_key = os.getenv("MODEL_API_KEY", "").strip()
     saved_key_scope = os.getenv("MODEL_API_KEY_SCOPE", "").strip()
-    if saved_key and not saved_key_scope:
-        # Migrate a legacy local key by binding it to its currently configured destination.
-        saved_key_scope = current_scope
-    saved_consent_scope = os.getenv("MODEL_CONSENT_SCOPE", "").strip() or current_scope
+    saved_consent_scope = os.getenv("MODEL_CONSENT_SCOPE", "").strip()
     previously_consented_here = (
         current.external_ticket_inference_allowed
         and saved_consent_scope == target_scope
@@ -1173,13 +1170,21 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
     config = ProviderConfig.from_env()
     if (
         case.source == "jira-service-management"
-        and config.live
         and config.requires_external_ticket_consent
         and not config.external_ticket_inference_allowed
     ):
         raise HTTPException(
             status_code=403,
             detail="External ticket inference is off. Review provider terms and set ALLOW_EXTERNAL_TICKET_INFERENCE=true locally before sending ticket text to a model.",
+        )
+    if (
+        case.source == "jira-service-management"
+        and config.requires_external_ticket_consent
+        and not config.live
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before processing Jira tickets.",
         )
     if case.source == "jira-service-management":
         try:
@@ -1353,13 +1358,21 @@ async def _decide_locked(
         config = ProviderConfig.from_env()
         if (
             case.source == "jira-service-management"
-            and config.live
             and config.requires_external_ticket_consent
             and not config.external_ticket_inference_allowed
         ):
             raise HTTPException(
                 status_code=403,
                 detail="External ticket inference is off. Re-enable it locally before asking models to review an edited Jira reply.",
+            )
+        if (
+            case.source == "jira-service-management"
+            and config.requires_external_ticket_consent
+            and not config.live
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before reviewing a Jira reply.",
             )
         try:
             score, verifier_findings, reviewer_findings = await review_edited_draft(

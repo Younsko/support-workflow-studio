@@ -697,6 +697,43 @@ def test_live_model_inference_for_jira_ticket_is_opt_in(monkeypatch) -> None:
     assert "ALLOW_EXTERNAL_TICKET_INFERENCE" in response.json()["detail"]
 
 
+def test_jira_inference_fails_closed_when_scoped_key_is_missing(monkeypatch) -> None:
+    from app import main
+
+    configure_test_knowledge(monkeypatch)
+    destination = "https://llm.example/v1"
+    scope = main.model_destination_scope("openai-compatible", destination)
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_API_KEY", "stale-synthetic-key")
+    monkeypatch.setenv("MODEL_API_KEY_SCOPE", "old-destination-scope")
+    monkeypatch.setenv("MODEL_BASE_URL", destination)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", scope)
+    CASES["DEMO-821"] = CaseRecord(
+        id="DEMO-821",
+        external_key="DEMO-821",
+        source="jira-service-management",
+        title="Synthetic sign-in request",
+        requester="Synthetic Requester",
+        channel="Jira Service Management",
+        created_at="2026-11-22T09:00:00Z",
+        priority="Normal",
+        category="Identity",
+        status="Open",
+        body="Synthetic issue with a fictional sign-in error.",
+        impact="One synthetic user",
+    )
+
+    response = client.post(
+        "/api/workflows", json={"case_id": "DEMO-821", "candidate_count": 1}
+    )
+
+    assert response.status_code == 409
+    assert "credentials are not configured" in response.json()["detail"]
+    assert "stale-synthetic-key" not in response.text
+
+
 def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch) -> None:
     monkeypatch.setenv("MODEL_PROVIDER", "demo")
     configure_test_knowledge(monkeypatch)
@@ -827,12 +864,19 @@ def test_setup_status_reports_token_presence_without_returning_token(monkeypatch
 
 
 def test_setup_status_reports_model_configuration_without_returning_key(monkeypatch) -> None:
+    from app import main
+
     secret = "synthetic-model-key"
+    scope = main.model_destination_scope(
+        "openai-compatible", "https://api.groq.com/openai/v1"
+    )
     monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
     monkeypatch.setenv("MODEL_NAME", "synthetic-model")
     monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
     monkeypatch.setenv("MODEL_API_KEY", secret)
+    monkeypatch.setenv("MODEL_API_KEY_SCOPE", scope)
     monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", scope)
 
     response = client.get("/api/setup")
 
@@ -844,6 +888,27 @@ def test_setup_status_reports_model_configuration_without_returning_key(monkeypa
     assert secret not in response.text
     assert "model_api_key" not in response.json()
 
+
+def test_setup_status_hides_credentials_and_consent_for_stale_destination(monkeypatch) -> None:
+    from app import main
+
+    old_scope = main.model_destination_scope(
+        "openai-compatible", "https://api.groq.com/openai/v1"
+    )
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("MODEL_API_KEY", "synthetic-key-for-old-destination")
+    monkeypatch.setenv("MODEL_API_KEY_SCOPE", old_scope)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", old_scope)
+
+    response = client.get("/api/setup")
+
+    assert response.status_code == 200
+    assert response.json()["model_api_key_configured"] is False
+    assert response.json()["external_model_disclosure_accepted"] is False
+    assert "synthetic-key-for-old-destination" not in response.text
 
 def test_model_setup_saves_byok_settings_without_calling_or_echoing_key(monkeypatch) -> None:
     from app import main
@@ -912,12 +977,12 @@ def test_model_setup_never_reuses_saved_key_for_a_different_provider(monkeypatch
     monkeypatch.setenv("MODEL_API_KEY", "key-for-groq")
     monkeypatch.setenv(
         "MODEL_API_KEY_SCOPE",
-        main._model_destination_scope("openai-compatible", "https://api.groq.com/openai/v1"),
+        main.model_destination_scope("openai-compatible", "https://api.groq.com/openai/v1"),
     )
     monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
     monkeypatch.setenv(
         "MODEL_CONSENT_SCOPE",
-        main._model_destination_scope("openai-compatible", "https://api.groq.com/openai/v1"),
+        main.model_destination_scope("openai-compatible", "https://api.groq.com/openai/v1"),
     )
     persisted = []
     monkeypatch.setattr(main, "_persist_local_setup", lambda *args, **kwargs: persisted.append(args))
@@ -940,7 +1005,7 @@ def test_model_setup_never_reuses_saved_key_for_a_different_provider(monkeypatch
 def test_model_setup_requires_fresh_disclosure_for_changed_endpoint(monkeypatch) -> None:
     from app import main
 
-    original_scope = main._model_destination_scope(
+    original_scope = main.model_destination_scope(
         "openai-compatible", "https://api.groq.com/openai/v1"
     )
     monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")

@@ -93,6 +93,52 @@ def test_groq_key_is_not_sent_to_another_compatible_host(monkeypatch) -> None:
     assert config.live is False
 
 
+def test_saved_model_key_and_consent_are_rejected_after_endpoint_change(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("MODEL_API_KEY", "synthetic-key-for-groq")
+    scope = providers.model_destination_scope(
+        "openai-compatible", "https://api.groq.com/openai/v1"
+    )
+    monkeypatch.setenv("MODEL_API_KEY_SCOPE", scope)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", scope)
+
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.openai.com/v1")
+    config = ProviderConfig.from_env()
+
+    assert config.api_key == ""
+    assert config.live is False
+    assert config.external_ticket_inference_allowed is False
+
+    monkeypatch.setenv("MODEL_API_KEY", "synthetic-key-for-openai")
+    monkeypatch.setenv(
+        "MODEL_API_KEY_SCOPE",
+        providers.model_destination_scope("openai-compatible", "https://api.openai.com/v1"),
+    )
+    consent_only_stale = ProviderConfig.from_env()
+    assert consent_only_stale.api_key == "synthetic-key-for-openai"
+    assert consent_only_stale.live is True
+    assert consent_only_stale.external_ticket_inference_allowed is False
+
+
+def test_legacy_unscoped_model_key_and_consent_fail_closed(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("MODEL_API_KEY", "legacy-unscoped-synthetic-key")
+    monkeypatch.delenv("MODEL_API_KEY_SCOPE", raising=False)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.delenv("MODEL_CONSENT_SCOPE", raising=False)
+
+    config = ProviderConfig.from_env()
+
+    assert config.api_key == ""
+    assert config.live is False
+    assert config.external_ticket_inference_allowed is False
+
+
 def test_openai_compatible_request_and_response_shape(monkeypatch) -> None:
     response = FakeResponse({"choices": [{"message": {"content": "Draft text"}}]})
     client = FakeAsyncClient(response=response, timeout=9)

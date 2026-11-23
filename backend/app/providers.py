@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -8,6 +9,14 @@ from ipaddress import ip_address
 from urllib.parse import urlparse
 
 import httpx
+
+
+def model_destination_scope(provider: str, base_url: str) -> str:
+    """Return a stable, non-secret binding for credentials and data consent."""
+    destination = base_url.strip().rstrip("/")
+    if provider == "anthropic":
+        destination = "https://api.anthropic.com/v1/messages"
+    return hashlib.sha256(f"{provider}\0{destination}".encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -29,8 +38,14 @@ class ProviderConfig:
             base_url = "https://api.groq.com/openai/v1"
         groq_endpoint = (urlparse(base_url).hostname or "").casefold() == "api.groq.com"
         api_key = os.getenv("MODEL_API_KEY", "").strip()
+        model_key_is_configured = bool(api_key)
         if not api_key and provider == "openai-compatible" and groq_endpoint:
             api_key = groq_key
+        key_scope = os.getenv("MODEL_API_KEY_SCOPE", "").strip()
+        if model_key_is_configured and key_scope != model_destination_scope(
+            provider, base_url
+        ):
+            api_key = ""
         model = os.getenv("MODEL_NAME", "").strip()
         if not model:
             model = (
@@ -57,23 +72,24 @@ class ProviderConfig:
 
     @property
     def requires_external_ticket_consent(self) -> bool:
-        return self.live and not (
-            self.provider == "ollama-local"
-            or (
-                self.provider == "openai-compatible"
-                and _is_loopback_endpoint(self.base_url)
-            )
+        return self.provider == "anthropic" or (
+            self.provider == "openai-compatible"
+            and not _is_loopback_endpoint(self.base_url)
         )
 
     @property
     def external_ticket_inference_allowed(self) -> bool:
-        return os.getenv(
+        accepted = os.getenv(
             "ALLOW_EXTERNAL_TICKET_INFERENCE", "false"
         ).strip().lower() in {
             "1",
             "true",
             "yes",
         }
+        consent_scope = os.getenv("MODEL_CONSENT_SCOPE", "").strip()
+        return accepted and consent_scope == model_destination_scope(
+            self.provider, self.base_url
+        )
 
     @classmethod
     def council_profile(cls) -> ProviderConfig | None:
