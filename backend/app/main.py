@@ -1,4 +1,1723 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíßn¹ñ:-jZ.¶›­–)Þ³Vg&öÒõögWGW&Uõò–×÷'Bææ÷FF–öç0 ¦–×÷'B7–æ6–ð¦–×÷'B†6†Æ– ¦–×÷'B—FG&W70¦–×÷'B§6öà¦–×÷'B÷0¦–×÷'B6‡WF–À¦–×÷'B7Æ—FS0¦–×÷'BFV×f–ÆP¦g&öÒ6öÆÆV7F–öç2æ&2–×÷'B6ÆÆ&ÆP¦g&öÒ6öçFW‡FÆ–"–×÷'B7–æ66öçFW‡FÖævW ¦g&öÒFFWF–ÖR–×÷'BUD2ÂFFWF–ÖP¦g&öÒF†Æ–"–×÷'BF€¦g&öÒ7FF—7F–72–×÷'BÖVF–à¦g&öÒW&ÆÆ–"ç'6R–×÷'BW&Ç7Æ—@¦g&öÒWV–B–×÷'BWV–C@ ¦–×÷'B‡GG€¦g&öÒF÷FVçb–×÷'BÆöEöF÷FVçbÂ6WEö¶W’ÂVç6WEö¶W¦g&öÒf7F’–×÷'Bf7D’Â…EEW†6WF–öâÂ&WVW7BÂ&W7öç6P¦g&öÒf7F’æW†6WF–öç2–×÷'B&WVW7EfÆ–FF–öäW'&÷ ¦g&öÒf7F’æÖ–FFÆWv&Ræ6÷'2–×÷'B4õ%4Ö–FFÆWv&P¦g&öÒf7F’ç7FF–6f–ÆW2–×÷'B7FF–4f–ÆW0¦g&öÒ–FçF–2–×÷'B&6TÖöFVÂÂf–VÆ@¦g&öÒ7F&ÆWGFRç&W7öç6W2–×÷'B¥4ôå&W7öç6P ¦g&öÒæ6öæfÇVVæ6R–×÷'B€¢6öæfÇVVæ6TFFW"À¢6öæfÇVVæ6T6öæf–rÀ¢6öæfÇVVæ6T6öæf–wW&F–öäW'&÷"À¢6öæfÇVVæ6U&WVW7DW'&÷"À¢¦g&öÒæ6öçG&öÅ÷ÆæRç6W76–öå÷Fö¶Vç2–×÷'B6W76–öåFö¶Vä–çfÆ–@¦g&öÒæW†V7WF–öå÷Æâ–×÷'B€¢W†V7WF–öåÆâÀ¢W†V7WF–öåÆäW'&÷"À¢6ö×–ÆU÷V&Æ—6†VE÷v÷&¶fÆ÷rÀ¢¦g&öÒæf—‡GW&W2–×÷'BFVÖõö66W0¦g&öÒæ—G6Ò–×÷'B€¢•E4Ô6öæf–wW&F–öäW'&÷"À¢•E4Ô÷WF6öÖUVæ¶æ÷vâÀ¢•E4Õ&WVW7DW'&÷"À¢¦—&6öæf–rÀ¢7&VFUö—G6ÕöFFW"À¢¦g&öÒæ¶æ÷vÆVFvR–×÷'B€¢¶æ÷vÆVFvT6öæf–wW&F–öäW'&÷"À¢¶æ÷vÆVFvU&WVW7DW'&÷"À¢¶æ÷vÆVFvU÷7FGW2À¢¦g&öÒç&÷f–FW'2–×÷'B&÷f–FW$6öæf–rÂ&÷f–FW$W'&÷"ÂÖöFVÅöFW7F–æF–öå÷66÷P¦g&öÒç'VææW%öWF‚–×÷'B€¢'VææW$WF„6öæf–rÀ¢'VææW$WF„6öæf–wW&F–öäW'&÷"À¢WF†VçF–6FUö&V&W"À¢&WV—&VE÷&öÆW2À¢¦g&öÒç'VææW%ö†V'F&VB–×÷'B€¢'VææW$†V'F&VD6öæf–rÀ¢'VææW$†V'F&VD6öæf–wW&F–öäW'&÷"À¢†V'F&VEöÆö÷À¢†V'F&VEööæ6RÀ¢–æ—F–Åö†V'F&VE÷7FFRÀ¢¦g&öÒç'VææW%ö–FVçF—G’–×÷'B'VææW$–FVçF—G¦g&öÒç66†VÖ2–×÷'B€¢66U&V6÷&BÀ¢FV6—6–öå&WVW7BÀ¢–çF¶U&WVW7BÀ¢V&Æ—6†VEv÷&¶fÆ÷u'Vå&WVW7BÀ¢'Vå&WVW7BÀ¢7FvU&V6÷&BÀ¢v÷&¶fÆ÷u&W7VÇBÀ¢v÷&·76TÖWG&–72À¢¦g&öÒç7F÷&R–×÷'Bv÷&¶fÆ÷u7FFU7F÷&RÂ6öæf–wW&VE÷7F÷&P¦g&öÒçv÷&¶fÆ÷r–×÷'B6öçFVçEöf–ævW'&–çBÂ&Wf–WuöVF—FVEöG&gBÂ'Vå÷v÷&¶fÆ÷p¦g&öÒçv÷&¶fÆ÷uö’–×÷'B6öæf–wW&VE÷v÷&¶fÆ÷u÷&Vv—7G'¦g&öÒçv÷&¶fÆ÷uö’–×÷'B&÷WFW"2v÷&¶fÆ÷uöFVf–æ—F–öç5÷&÷WFW ¦g&öÒçv÷&¶fÆ÷uöFVf–æ—F–öç2–×÷'BV&Æ—6†VEv÷&¶fÆ÷p  ¦FVbö6öæf–wW&VEöVçe÷F‚‚’ÓâFƒ ¢FVfVÇE÷F‚ÒF‚…õöf–ÆUõò’ç&W6öÇfR‚’ç&VçG5³%Òò"æVçb ¢&WGW&âF‚†÷2ævWFVçb‚%5Uõ%Eõtõ$´dÄõuôTåeõD‚"Â7G"†FVfVÇE÷F‚’’’æW‡æGW6W"‚  ¦ÆöEöF÷FVçb…ö6öæf–wW&VEöVçe÷F‚‚’  ¦6Æ726WGW&WVW7B„&6TÖöFVÂ“ ¢ÖöFVÅö6öæf–rÒ²'&÷FV7FVEöæÖW76W2#¢‚—Ð ¢¦—&ö&6U÷W&Ã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#SR¢¦—&öVÖ–Ã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#SR¢¦—&ö•÷Fö¶Vã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#Â&W#ÔfÇ6R¢¦—&÷6W'f–6UöFW6µö–C¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓC¢¦—&÷VWVUö–C¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓC¢¶æ÷vÆVFvUöF—#¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#C‚¢¶æ÷vÆVFvU÷&÷f–FW#¢7G"Òf–VÆB†FVfVÇCÒ&Æö6Â"ÂÖ…öÆVæwFƒÓ#¢6öæfÇVVæ6Uö&6U÷W&Ã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#SR¢6öæfÇVVæ6UöVÖ–Ã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#SR¢6öæfÇVVæ6Uö•÷Fö¶Vã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#Â&W#ÔfÇ6R¢6öæfÇVVæ6U÷76Uö¶W—3¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓcC¢6öæfÇVVæ6U÷F–6¶WE÷6V&6…öÆÆ÷vVC¢&ööÂÒfÇ6P¢WFõ÷G&–vUöæWu÷F–6¶WG3¢&ööÂÒfÇ6P¢öÆÅö–çFW'fÅ÷6V6öæG3¢–çBÒf–VÆB†FVfVÇCÓcÂvSÓRÂÆSÓ“¢Ö…öWFõ÷G&–vU÷W%÷öÆÃ¢–çBÒf–VÆB†FVfVÇCÓRÂvSÓÂÆSÓ¢ãö¶W—v÷&G3¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#¢ã5÷ÇW5ö¶W—v÷&G3¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#¢ã5ö¶W—v÷&G3¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#¢ÖöFVÅ÷&÷f–FW#¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓC¢ÖöFVÅöæÖS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓc¢ÖöFVÅö&6U÷W&Ã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#SR¢ÖöFVÅö•ö¶W“¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#Â&W#ÔfÇ6R¢6ÆV%öÖöFVÅö•ö¶W“¢&ööÂÒfÇ6P¢W‡FW&æÅöÖöFVÅöF—66Æ÷7W&Uö66WFVC¢&ööÂÂæöæRÒæöæP¢'VææW%ö†V'F&VE÷Fö¶Vã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#‚Â&W#ÔfÇ6R¢6ÆV%÷'VææW%ö†V'F&VE÷Fö¶Vã¢&ööÂÒfÇ6P¢'VææW%ö†V'F&VEö–çFW'fÅ÷6V6öæG3¢–çBÒf–VÆB†FVfVÇCÓcÂvSÓ3ÂÆSÓ3c  ¦6Æ72¦—&F—66÷fW'•&WVW7B„&6TÖöFVÂ“ ¢¦—&ö&6U÷W&Ã¢7G"Òf–VÆB†Ö…öÆVæwFƒÓ#SR¢¦—&öVÖ–Ã¢7G"Òf–VÆB†Ö…öÆVæwFƒÓ#SR¢¦—&ö•÷Fö¶Vã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#Â&W#ÔfÇ6R¢6W'f–6UöFW6µö–C¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓC  ¦6Æ726öæfÇVVæ6T6†V6µ&WVW7B„&6TÖöFVÂ“ ¢6öæfÇVVæ6Uö&6U÷W&Ã¢7G"Òf–VÆB†Ö…öÆVæwFƒÓ#SR¢6öæfÇVVæ6UöVÖ–Ã¢7G"Òf–VÆB†Ö…öÆVæwFƒÓ#SR¢6öæfÇVVæ6Uö•÷Fö¶Vã¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#Â&W#ÔfÇ6R¢6öæfÇVVæ6U÷76Uö¶W—3¢7G"Òf–VÆB†Ö…öÆVæwFƒÓcC  ¤¤•$ôÔôä•Dõ%õ5DDS¢F–7E·7G"Âö&¦V7EÒÒ°¢&Væ&ÆVB#¢fÇ6RÀ¢&Æ7E÷öÆÅöB#¢æöæRÀ¢&Æ7EöW'&÷"#¢æöæRÀ¢&æWuö66W5÷6VVâ#¢À¢&WFõ÷G&–vVEö6÷VçB#¢À¢&WFõ÷G&–vUöFVfW'&VB#¢À¢'&WG'•÷VæF–æuö6÷VçB#¢À¢'vUö6÷&V6†VB#¢fÇ6RÀ¢&WFõ÷G&–vUöVæ&ÆVB#¢fÇ6RÀ§Ð¥%TääU%ô„T%D$TEõ5DDRÒ–æ—F–Åö†V'F&VE÷7FFR‚¤¤•$õ4TTåô´U•3¢6WE·7G%ÒÒ6WB‚¤¤•$õTäD”äuõE$”tUôEDTÕE3¢F–7E·7G"Â–çEÒÒ·Ð¤¤•$ôÄô4ÅõDu3¢F–7E·7G"Â6WE·7G%ÕÒÒ·Ð¤¤•$ôÔôä•Dõ%ôÄô4²Ò7–æ6–òäÆö6²‚¤¤•$ôÔôä•Dõ%ô$4TÄ”äTBÒfÇ6P¤¤•$ôÔôä•Dõ%ô$4TÄ”äUôC¢FFWF–ÖRÂæöæRÒæöæP¤¤•$ôUDõõE$”tUô$4TÄ”äUôC¢FFWF–ÖRÂæöæRÒæöæP¤¤•$ôUDõõE$”tUõt5ôTä$ÄTBÒfÇ6P¥tõ$´dÄõuôÄô4µ3¢F–7E·7G"Â7–æ6–òäÆö6µÒÒ·Ð¥5DDUõ5Dõ$S¢v÷&¶fÆ÷u7FFU7F÷&RÂæöæRÒæöæP¥4UEUõu$•DUôÄô4²Ò7–æ6–òäÆö6²‚  ¦FVb÷W'6—7EöÆö6Å÷6WGW€¢fÇVW3¢F–7E·7G"Â7G%ÒÀ¢•÷Fö¶Vã¢7G"À¢&VÖ÷fUö•÷Fö¶Vã¢&ööÂÀ¢ÖöFVÅö•ö¶W“¢7G"Ò""À¢&VÖ÷fUöÖöFVÅö•ö¶W“¢&ööÂÒfÇ6RÀ¢6öæfÇVVæ6Uö•÷Fö¶Vã¢7G"Ò""À¢&VÖ÷fUö6öæfÇVVæ6Uö•÷Fö¶Vã¢&ööÂÒfÇ6RÀ¢'VææW%ö†V'F&VE÷Fö¶Vã¢7G"Ò""À¢&VÖ÷fU÷'VææW%ö†V'F&VE÷Fö¶Vã¢&ööÂÒfÇ6RÀ¢’ÓâæöæS ¢""$FöÖ–6ÆÇ’WFFR–væ÷&VBÆö6Â6öæf–wW&F–öâÂF†VâÇ’—B–â×&ö6W72â"" ¢Vçe÷F‚Òö6öæf–wW&VEöVçe÷F‚‚¢Vçe÷F‚ç&VçBæÖ¶F—"‡&VçG3ÕG'VRÂW†—7Eöö³ÕG'VR¢v—F‚FV×f–ÆRäæÖVEFV×÷&'”f–ÆR€¢&Vf—ƒÒ"æVçbâ"Â7Vff—ƒÒ"çF×"ÂF—#ÖVçe÷F‚ç&VçBÂFVÆWFSÔfÇ6P¢’2†æFÆS ¢7FvVE÷F‚ÒF‚††æFÆRææÖR¢G'“ ¢–bVçe÷F‚æ—5öf–ÆR‚“ ¢6‡WF–Âæ6÷“"†Vçe÷F‚Â7FvVE÷F‚¢f÷"æÖRÂfÇVR–âfÇVW2æ—FV×2‚“ ¢6WEö¶W’‡7G"‡7FvVE÷F‚’ÂæÖRÂfÇVRÂV÷FUöÖöFSÒ&Çv—2"¢–b•÷Fö¶Vã ¢6WEö¶W’‡7G"‡7FvVE÷F‚’Â$¥4Õô•õDô´Tâ"Â•÷Fö¶VâÂV÷FUöÖöFSÒ&Çv—2"¢VÆ–b&VÖ÷fUö•÷Fö¶Vã ¢Vç6WEö¶W’‡7G"‡7FvVE÷F‚’Â$¥4Õô•õDô´Tâ"¢–bÖöFVÅö•ö¶W“ ¢6WEö¶W’‡7G"‡7FvVE÷F‚’Â$ÔôDTÅô•ô´U’"ÂÖöFVÅö•ö¶W’ÂV÷FUöÖöFSÒ&Çv—2"¢VÆ–b&VÖ÷fUöÖöFVÅö•ö¶W“ ¢Vç6WEö¶W’‡7G"‡7FvVE÷F‚’Â$ÔôDTÅô•ô´U’"¢Vç6WEö¶W’‡7G"‡7FvVE÷F‚’Â$ÔôDTÅô•ô´U•õ44õR"¢–b6öæfÇVVæ6Uö•÷Fö¶Vã ¢6WEö¶W’‡7G"‡7FvVE÷F‚’Â$4ôädÅTTä4Uô•õDô´Tâ"Â6öæfÇVVæ6Uö•÷Fö¶VâÂV÷FUöÖöFSÒ&Çv—2"¢VÆ–b&VÖ÷fUö6öæfÇVVæ6Uö•÷Fö¶Vã ¢Vç6WEö¶W’‡7G"‡7FvVE÷F‚’Â$4ôädÅTTä4Uô•õDô´Tâ"¢–b'VææW%ö†V'F&VE÷Fö¶Vã ¢6WEö¶W’€¢7G"‡7FvVE÷F‚’À¢%5Uõ%Eô4ôåE$ôÅõÄäUõ%TääU%õDô´Tâ"À¢'VææW%ö†V'F&VE÷Fö¶VâÀ¢V÷FUöÖöFSÒ&Çv—2"À¢¢VÆ–b&VÖ÷fU÷'VææW%ö†V'F&VE÷Fö¶Vã ¢Vç6WEö¶W’‡7G"‡7FvVE÷F‚’Â%5Uõ%Eô4ôåE$ôÅõÄäUõ%TääU%õDô´Tâ"¢–b÷2ææÖRÒ&çB# ¢7FvVE÷F‚æ6†ÖöBƒóc¢÷2ç&WÆ6R‡7FvVE÷F‚ÂVçe÷F‚¢W†6WBW†6WF–öã ¢7FvVE÷F‚çVæÆ–æ²†Ö—76–æuöö³ÕG'VR¢&—6P ¢÷2æVçf—&öâçWFFR‡fÇVW2¢–b•÷Fö¶Vã ¢÷2æVçf—&öå²$¥4Õô•õDô´Tâ%ÒÒ•÷Fö¶Và¢VÆ–b&VÖ÷fUö•÷Fö¶Vã ¢÷2æVçf—&öâç÷‚$¥4Õô•õDô´Tâ"ÂæöæR¢–bÖöFVÅö•ö¶W“ ¢÷2æVçf—&öå²$ÔôDTÅô•ô´U’%ÒÒÖöFVÅö•ö¶W¢VÆ–b&VÖ÷fUöÖöFVÅö•ö¶W“ ¢÷2æVçf—&öâç÷‚$ÔôDTÅô•ô´U’"ÂæöæR¢÷2æVçf—&öâç÷‚$ÔôDTÅô•ô´U•õ44õR"ÂæöæR¢–b6öæfÇVVæ6Uö•÷Fö¶Vã ¢÷2æVçf—&öå²$4ôädÅTTä4Uô•õDô´Tâ%ÒÒ6öæfÇVVæ6Uö•÷Fö¶Và¢VÆ–b&VÖ÷fUö6öæfÇVVæ6Uö•÷Fö¶Vã ¢÷2æVçf—&öâç÷‚$4ôädÅTTä4Uô•õDô´Tâ"ÂæöæR¢–b'VææW%ö†V'F&VE÷Fö¶Vã ¢÷2æVçf—&öå²%5Uõ%Eô4ôåE$ôÅõÄäUõ%TääU%õDô´Tâ%ÒÒ'VææW%ö†V'F&VE÷Fö¶Và¢VÆ–b&VÖ÷fU÷'VææW%ö†V'F&VE÷Fö¶Vã ¢÷2æVçf—&öâç÷‚%5Uõ%Eô4ôåE$ôÅõÄäUõ%TääU%õDô´Tâ"ÂæöæR  ¦FVb÷6fUö66R†66S¢66U&V6÷&B’ÓâæöæS ¢–b5DDUõ5Dõ$R—2æ÷BæöæS ¢5DDUõ5Dõ$Rç6fUö66R†66R  ¦FVb÷6fU÷'Vâ€¢'Vã¢v÷&¶fÆ÷u&W7VÇBÀ¢¢À¢VF—EöWfVçC¢GWÆU·7G"Â7G"Â7G"ÂF–7E·7G"Âö&¦V7EÕÒÂæöæRÒæöæRÀ¢W†V7WF–öåö6Æ–Ó¢GWÆU·7G"Â7G%ÒÂæöæRÒæöæRÀ¢’ÓâæöæS ¢–b5DDUõ5Dõ$R—2æ÷BæöæS ¢5DDUõ5Dõ$Rç6fU÷'Vâ‡'VâÂVF—EöWfVçCÖVF—EöWfVçBÂW†V7WF–öåö6Æ–ÓÖW†V7WF–öåö6Æ–Ò  ¦FVb÷&V6÷&E÷V&Æ—6†VEöW†V7WF–öå÷7FvR€¢7F÷&S¢v÷&¶fÆ÷u7FFU7F÷&RÀ¢–FV×÷FVæ7•ö¶W“¢7G"À¢ÆV6Uö÷væW#¢7G"À¢'Våö–C¢7G"À¢GFV×C¢–çBÀ¢7FvS¢7FvU&V6÷&BÀ¢÷&F–æÃ¢–çBÀ¢’ÓâæöæS ¢æ÷rÒFFWF–ÖRææ÷r…UD2¢–bæ÷B7F÷&Rç&VæWu÷V&Æ—6†VE÷'Våö6Æ–Ò†–FV×÷FVæ7•ö¶W’ÂÆV6Uö÷væW"Âæ÷r“ ¢&—6R'VçF–ÖTW'&÷"‚%V&Æ—6†VBv÷&¶fÆ÷rW†V7WF–öâÆV6RW‡—&VB÷"v2G&ç6fW'&VBâ"¢7F÷&Rç&V6÷&EöW†V7WF–öå÷7FW€¢'Våö–C×'Våö–BÀ¢GFV×CÖGFV×BÀ¢÷&F–æÃÖ÷&F–æÂÀ¢7FvUö–C×7FvRæ–BÀ¢7FGW3×7FvRç7FGW2À¢VÆ6VEö×3×7FvRæVÆ6VEö×2À¢&V6÷&FVEöCÖæ÷rÀ¢  ¦FVböVæ&ÆVEöVçb†æÖS¢7G"’Óâ&ööÃ ¢&WGW&â÷2ævWFVçb†æÖRÂ&fÇ6R"’ç7G&—‚’æÆ÷vW"‚’–â²#"Â'G'VR"Â'–W2'Ð  ¦FVböÖöæ—F÷%ö6†V6·ö–çB‚’ÓâF–7E·7G"Âö&¦V7EÓ ¢&WGW&â°¢'6VVåö¶W—2#¢6÷'FVB„¤•$õ4TTåô´U•2’À¢'VæF–æuöGFV×G2#¢F–7B„¤•$õTäD”äuõE$”tUôEDTÕE2’À¢&Æö6Å÷Fw2#¢¶66Uö–C¢6÷'FVB‡Fw2’f÷"66Uö–BÂFw2–â¤•$ôÄô4ÅõDu2æ—FV×2‚—ÒÀ¢&Ööæ—F÷%ö&6VÆ–æVB#¢¤•$ôÔôä•Dõ%ô$4TÄ”äTBÀ¢&Ööæ—F÷%ö&6VÆ–æUöB#¢¤•$ôÔôä•Dõ%ô$4TÄ”äUôBæ—6öf÷&ÖB‚’–b¤•$ôÔôä•Dõ%ô$4TÄ”äUôBVÇ6RæöæRÀ¢&WFõ÷G&–vUö&6VÆ–æUöB#¢¤•$ôUDõõE$”tUô$4TÄ”äUôBæ—6öf÷&ÖB‚’–b¤•$ôUDõõE$”tUô$4TÄ”äUôBVÇ6RæöæRÀ¢&WFõ÷G&–vU÷v5öVæ&ÆVB#¢¤•$ôUDõõE$”tUõt5ôTä$ÄTBÀ¢Ð  ¦FVb÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚’ÓâæöæS ¢–b5DDUõ5Dõ$R—2æ÷BæöæS ¢5DDUõ5Dõ$Rç6fUöÖöæ—F÷%÷7FFR…öÖöæ—F÷%ö6†V6·ö–çB‚’  ¦FVb÷&W7F÷&UöÖöæ—F÷%ö6†V6·ö–çB‡7FFS¢F–7E·7G"Âö&¦V7EÒ’ÓâæöæS ¢vÆö&Â¤•$ôÔôä•Dõ%ô$4TÄ”äTBÂ¤•$ôÔôä•Dõ%ô$4TÄ”äUô@¢vÆö&Â¤•$ôUDõõE$”tUô$4TÄ”äUôBÂ¤•$ôUDõõE$”tUõt5ôTä$ÄT@¢6VVâÒ7FFRævWB‚'6VVåö¶W—2"¢–b—6–ç7Fæ6R‡6VVâÂÆ—7B“ ¢¤•$õ4TTåô´U•2çWFFR‡fÇVRf÷"fÇVR–â6VVâ–b—6–ç7Fæ6R‡fÇVRÂ7G"’¢GFV×G2Ò7FFRævWB‚'VæF–æuöGFV×G2"¢–b—6–ç7Fæ6R†GFV×G2ÂF–7B“ ¢f÷"66Uö–BÂ6÷VçB–âGFV×G2æ—FV×2‚“ ¢–b—6–ç7Fæ6R†66Uö–BÂ7G"’æB—6–ç7Fæ6R†6÷VçBÂ–çB’æBÃÒ6÷VçBÃÒ3 ¢¤•$õTäD”äuõE$”tUôEDTÕE5¶66Uö–EÒÒ6÷Vç@¢Fw2Ò7FFRævWB‚&Æö6Å÷Fw2"¢–b—6–ç7Fæ6R‡Fw2ÂF–7B“ ¢f÷"66Uö–BÂfÇVW2–âFw2æ—FV×2‚“ ¢–b—6–ç7Fæ6R†66Uö–BÂ7G"’æB—6–ç7Fæ6R‡fÇVW2ÂÆ—7B“ ¢¤•$ôÄô4ÅõDu5¶66Uö–EÒÒ°¢Frf÷"Fr–âfÇVW2–b—6–ç7Fæ6R‡FrÂ7G"’æBFrç7F'G7v—F‚‚'7GVF–ò×G&–vRÒ"¢Ð¢f÷"66Uö–BÂ66R–â44U2æ—FV×2‚“ ¢¤•$ôÄô4ÅõDu2ç6WFFVfVÇB€¢66Uö–BÂ·Frf÷"Fr–â66RçFw2–bFrç7F'G7v—F‚‚'7GVF–ò×G&–vRÒ"—Ð¢¢¤•$ôÔôä•Dõ%ô$4TÄ”äTBÒ7FFRævWB‚&Ööæ—F÷%ö&6VÆ–æVB"’—2G'VP¢f÷"æÖRÂvÆö&ÅöæÖR–â€¢‚&Ööæ—F÷%ö&6VÆ–æUöB"Â&Ööæ—F÷""’À¢‚&WFõ÷G&–vUö&6VÆ–æUöB"Â&WFò"’À¢“ ¢&rÒ7FFRævWB†æÖR¢G'“ ¢fÇVRÒFFWF–ÖRæg&öÖ—6öf÷&ÖB‡&r’–b—6–ç7Fæ6R‡&rÂ7G"’VÇ6RæöæP¢W†6WBfÇVTW'&÷# ¢fÇVRÒæöæP¢–bvÆö&ÅöæÖRÓÒ&Ööæ—F÷"# ¢¤•$ôÔôä•Dõ%ô$4TÄ”äUôBÒfÇVP¢VÇ6S ¢¤•$ôUDõõE$”tUô$4TÄ”äUôBÒfÇVP¢¤•$ôUDõõE$”tUõt5ôTä$ÄTBÒ7FFRævWB‚&WFõ÷G&–vU÷v5öVæ&ÆVB"’—2G'VP  ¦FVb÷&—fFUöÆö6ÅöÖöFUöVæ&ÆVB‚’Óâ&ööÃ ¢&WGW&âöVæ&ÆVEöVçb‚%$•dDUôÄô4ÅôÔôDR"  ¦FVb÷fÆ–FFU÷&—fFUöÆö6ÅöÖöFR‚’ÓâæöæS ¢–bæ÷B÷&—fFUöÆö6ÅöÖöFUöVæ&ÆVB‚“ ¢&WGW&à¢&÷f–FW"Ò&÷f–FW$6öæf–ræg&öÕöVçb‚¢–b&÷f–FW"ç&÷f–FW"Ò&öÆÆÖÖÆö6Â"÷"æ÷B&÷f–FW"æÆ—fS ¢&—6R'VçF–ÖTW'&÷"€¢%$•dDUôÄô4ÅôÔôDR&WV—&W2ÔôDTÅõ$õd”DU#ÖöÆÆÖÖÆö6ÂÂÆö÷&6²VæGö–çBÂæBÖöFVÂæÖRâ ¢¢–bç’€¢÷2ævWFVçb†æÖRÂ""’ç7G&—‚¢f÷"æÖR–â€¢$¥4Õô$4UõU$Â"À¢$¥4ÕõU4U%ôTÔ”Â"À¢$¥4Õô•õDô´Tâ"À¢$¥4Õõ4U%d”4UôDU4µô”B"À¢$¥4ÕõTUTUô”B"À¢¢“ ¢&—6R'VçF–ÖTW'&÷"€¢%$•dDUôÄô4ÅôÔôDR&VgW6W2¦—&6öææV7F÷"6öæf–wW&F–öã²&VÖ÷fRÆÂ¥4Ò6WGF–æw2â ¢¢–b€¢öVæ&ÆVEöVçb‚$ÄÄõuôU…DU$äÅõD”4´UEô”ädU$Tä4R"¢÷"öVæ&ÆVEöVçb‚$¥4ÕôUDõõE$”tUôäUuõD”4´UE2"¢÷"ç’€¢÷2ævWFVçb†æÖRÂ""’ç7G&—‚¢f÷"æÖR–â€¢$4õTä4”Åõ$õd”DU""À¢$4õTä4”ÅôÔôDTÂ"À¢$4õTä4”Åô•ô´U’"À¢$4õTä4”Åô$4UõU$Â"À¢$¥TDtUõ$õd”DU""À¢$¥TDtUôÔôDTÂ"À¢$¥TDtUô•ô´U’"À¢$¥TDtUô$4UõU$Â"À¢¢¢“ ¢&—6R'VçF–ÖTW'&÷"€¢%$•dDUôÄô4ÅôÔôDR&VgW6W2W‡FW&æÂ–æfW&Væ6R6öç6VçBæB6÷Væ6–Âö§VFvR&öf–ÆW2â ¢  ¦FVb÷v÷&¶fÆ÷uöÆö6²†66Uö–C¢7G"’Óâ7–æ6–òäÆö6³ ¢&WGW&âtõ$´dÄõuôÄô4µ2ç6WFFVfVÇB†66Uö–BÂ7–æ6–òäÆö6²‚’  ¦FVb÷FuöÆö6Åö66R†66Uö–C¢7G"ÂFs¢7G"ÂVæ&ÆVC¢&ööÂ’ÓâæöæS ¢Fw2Ò¤•$ôÄô4ÅõDu2ç6WFFVfVÇB†66Uö–BÂ6WB‚’¢–bVæ&ÆVC ¢Fw2æFB‡Fr¢VÇ6S ¢Fw2æF—66&B‡Fr¢–bæ÷BFw3 ¢¤•$ôÄô4ÅõDu2ç÷†66Uö–BÂæöæR¢66RÒ44U2ævWB†66Uö–B¢–b66R—2æ÷BæöæS ¢&W6W'fVBÒ¶—FVÒf÷"—FVÒ–â66RçFw2–b—FVÒç7F'G7v—F‚‚'7GVF–ò×G&–vRÒ"•Ð¢66U÷Fw2Ò6WB†66RçFw2’Ò6WB‡&W6W'fVB¢66U÷Fw2çWFFR„¤•$ôÄô4ÅõDu2ævWB†66Uö–BÂ6WB‚’’¢44U5¶66Uö–EÒÒ66RæÖöFVÅö6÷’‡WFFS×²'Fw2#¢6÷'FVB†66U÷Fw2—Ò¢÷6fUö66R„44U5¶66Uö–EÒ  ¦FVböÖöæ—F÷%ö–çFW'fÅ÷6V6öæG2‚’Óâ–çC ¢G'“ ¢6öæf–wW&VBÒ–çB†÷2ævWFVçb‚$¥4ÕõôÄÅô”åDU%dÅõ4T4ôäE2"Â#c"’¢W†6WBfÇVTW'&÷# ¢6öæf–wW&VBÒc ¢&WGW&âÖ‚ƒRÂÖ–âƒ“Â6öæf–wW&VB’  ¦FVböWFõ÷G&–vUöÆ–Ö—B‚’Óâ–çC ¢G'“ ¢6öæf–wW&VBÒ–çB†÷2ævWFVçb‚$¥4ÕôUDõõE$”tUôÔ…õU%õôÄÂ"Â#R"’¢W†6WBfÇVTW'&÷# ¢6öæf–wW&VBÒP¢&WGW&âÖ‚ƒÂÖ–âƒÂ6öæf–wW&VB’  ¦FVbö7&VFVEögFW%ö&6VÆ–æR†7&VFVEöC¢7G"Â&6VÆ–æS¢FFWF–ÖRÂæöæR’Óâ&ööÃ ¢–b&6VÆ–æR—2æöæS ¢&WGW&âfÇ6P¢G'“ ¢7&VFVBÒFFWF–ÖRæg&öÖ—6öf÷&ÖB†7&VFVEöB¢W†6WBfÇVTW'&÷# ¢&WGW&âfÇ6P¢–b7&VFVBçG¦–æfò—2æöæS ¢&WGW&âfÇ6P¢&WGW&â7&VFVBæ7F–ÖW¦öæR…UD2’â&6VÆ–æP  ¦7–æ2FVb÷öÆÅö¦—&ööæ6R‚’ÓâæöæS ¢vÆö&Â¤•$ôÔôä•Dõ%ô$4TÄ”äTBÂ¤•$ôÔôä•Dõ%ô$4TÄ”äUô@¢vÆö&Â¤•$ôUDõõE$”tUô$4TÄ”äUôBÂ¤•$ôUDõõE$”tUõt5ôTä$ÄT@¢–b÷&—fFUöÆö6ÅöÖöFUöVæ&ÆVB‚“ ¢¤•$ôÔôä•Dõ%õ5DDRçWFFR†Væ&ÆVCÔfÇ6RÂÆ7EöW'&÷#ÔæöæR¢&WGW&à¢6öæf–rÒ¦—&6öæf–ræg&öÕöVçb‚¢–bæ÷B6öæf–ræ6öæf–wW&VC ¢¤•$ôÔôä•Dõ%õ5DDRçWFFR†Væ&ÆVCÔfÇ6RÂÆ7EöW'&÷#ÔæöæR¢&WGW&à¢FFW"Ò7&VFUö—G6ÕöFFW"‚&¦—&×6W'f–6RÖÖævVÖVçB"Â6öæf–r ¢WFõ÷G&–vRÒöVæ&ÆVEöVçb‚$¥4ÕôUDõõE$”tUôäUuõD”4´UE2"¢7–æ2v—F‚¤•$ôÔôä•Dõ%ôÄô4³ ¢öÆÅ÷7F'FVEöBÒFFWF–ÖRææ÷r…UD2¢–bWFõ÷G&–vRæBæ÷B¤•$ôUDõõE$”tUõt5ôTä$ÄTC ¢¤•$ôUDõõE$”tUô$4TÄ”äUôBÒöÆÅ÷7F'FVEö@¢VÆ–bæ÷BWFõ÷G&–vS ¢¤•$ôUDõõE$”tUô$4TÄ”äUôBÒæöæP¢¤•$ôUDõõE$”tUõt5ôTä$ÄTBÒWFõ÷G&–vP¢&VÖ÷FUö66W3¢Æ—7E´66U&V6÷&EÒÒµÐ¢vU÷6—¦RÒS ¢Ö†–×VÒÒ# ¢vUö6÷&V6†VBÒfÇ6P¢f÷"7F'B–â&ævRƒÂÖ†–×VÒ²vU÷6—¦RÂvU÷6—¦R“ ¢vRÒv—BFFW"æÆ—7E÷VWVUö66W2†Æ–Ö—C×vU÷6—¦RÂ7F'C×7F'B¢–b7F'BÓÒÖ†–×VÓ ¢vUö6÷&V6†VBÒ&ööÂ‡vR¢'&V°¢&VÖ÷FUö66W2æW‡FVæB‡vR¢–bÆVâ‡vR’ÂvU÷6—¦S ¢'&V°¢Væ—VUö66W2Ò¶66Ræ–C¢66Rf÷"66R–â&VÖ÷FUö66W7Ð¢&VÖ÷FUö66W2ÒÆ—7B‡Væ—VUö66W2çfÇVW2‚’¢æ÷rÒFFWF–ÖRææ÷r…UD2’æ—6öf÷&ÖB‡F–ÖW7V3Ò'6V6öæG2"¢æWuö66W2Ò¶66Rf÷"66R–â&VÖ÷FUö66W2–b66Ræ–Bæ÷B–â¤•$õ4TTåô´U•5Ð¢f÷"66R–â&VÖ÷FUö66W3 ¢44U5¶66Ræ–EÒÒ66RæÖöFVÅö6÷’€¢WFFS×°¢'Fw2#¢6÷'FVB‡6WB†66RçFw2’Â¤•$ôÄô4ÅõDu2ævWB†66Ræ–BÂ6WB‚’’¢Ð¢¢÷6fUö66R„44U5¶66Ræ–EÒ ¢¤•$õ4TTåô´U•2çWFFR†66Ræ–Bf÷"66R–â&VÖ÷FUö66W2¢2F†Rf—'7B7V66W76gVÂöÆÂW7F&Æ—6†W27&VF–öâ×F–ÖR&6VÆ–æRâF†P¢2WFò×G&–vR&6VÆ–æRÇ6ò&W6WG2v†Vâ—G2÷BÖ–â6WGF–ær—2Væ&ÆVBà¢–bæ÷B¤•$ôÔôä•Dõ%ô$4TÄ”äTC ¢¤•$ôÔôä•Dõ%ô$4TÄ”äTBÒG'VP¢¤•$ôÔôä•Dõ%ô$4TÄ”äUôBÒöÆÅ÷7F'FVEö@¢æWuö66W5ögFW%öÖöæ—F÷%ö&6VÆ–æRÒ°¢66P¢f÷"66R–âæWuö66W0¢–bö7&VFVEögFW%ö&6VÆ–æR†66Ræ7&VFVEöBÂ¤•$ôÔôä•Dõ%ô$4TÄ”äUôB¢Ð¢æWuö66W5÷6VVâÒÆVâ†æWuö66W5ögFW%öÖöæ—F÷%ö&6VÆ–æR¢æWuö66W2Ò°¢66P¢f÷"66R–âæWuö66W5ögFW%öÖöæ—F÷%ö&6VÆ–æP¢–bWFõ÷G&–vP¢æBö7&VFVEögFW%ö&6VÆ–æR†66Ræ7&VFVEöBÂ¤•$ôUDõõE$”tUô$4TÄ”äUôB¢Ð ¢7W'&VçEö–G2Ò¶66Ræ–Bf÷"66R–â&VÖ÷FUö66W7Ð¢f÷"66Uö–B–âÆ—7B„¤•$õTäD”äuõE$”tUôEDTÕE2“ ¢–b66Uö–Bæ÷B–â7W'&VçEö–G2æBæ÷BvUö6÷&V6†VC ¢¤•$õTäD”äuõE$”tUôEDTÕE2ç÷†66Uö–BÂæöæR¢÷FuöÆö6Åö66R†66Uö–BÂ'7GVF–ò×G&–vR×&WG'’×VæF–ær"ÂfÇ6R¢–bWFõ÷G&–vS ¢f÷"66R–âæWuö66W3 ¢¤•$õTäD”äuõE$”tUôEDTÕE2ç6WFFVfVÇB†66Ræ–BÂ¢VæF–æuö66W2Ò°¢66P¢f÷"66R–â&VÖ÷FUö66W0¢–b66Ræ–B–â¤•$õTäD”äuõE$”tUôEDTÕE0¢Ð¢¤•$ôÔôä•Dõ%õ5DDRçWFFR€¢Væ&ÆVCÕG'VRÀ¢Æ7E÷öÆÅöCÖæ÷rÀ¢Æ7EöW'&÷#ÔæöæRÀ¢æWuö66W5÷6VVãÖæWuö66W5÷6VVâÀ¢WFõ÷G&–vVEö6÷VçCÓÀ¢WFõ÷G&–vUöFVfW'&VCÓÀ¢&WG'•÷VæF–æuö6÷VçCÖÆVâ„¤•$õTäD”äuõE$”tUôEDTÕE2’À¢vUö6÷&V6†VC×vUö6÷&V6†VBÀ¢WFõ÷G&–vUöVæ&ÆVCÖWFõ÷G&–vRÀ¢¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚ ¢–bæ÷BWFõ÷G&–vR÷"æ÷BVæF–æuö66W3 ¢&WGW&à ¢¶æ÷vÆVFvRÒ¶æ÷vÆVFvU÷7FGW2‚¢&÷f–FW"Ò&÷f–FW$6öæf–ræg&öÕöVçb‚¢–b€¢¶æ÷vÆVFvU²&ÖöFR%ÒÒ&Æö6Â ¢÷"æ÷B¶æ÷vÆVFvU²&6öæf–wW&VB%Ð¢÷"æ÷B¶æ÷vÆVFvU²&f–Æ&ÆR%Ð¢“ ¢¤•$ôÔôä•Dõ%õ5DDU²&Æ7EöW'&÷"%ÒÒ€¢$WFò×G&–vRW6VC¢÷W&F÷"¶æ÷vÆVFvR—2æ÷B6öæf–wW&VBâ ¢¢f÷"66R–âVæF–æuö66W3 ¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×W6VBÖ¶æ÷vÆVFvR"ÂG'VR¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢&WGW&à¢–b€¢&÷f–FW"ç&WV—&W5öW‡FW&æÅ÷F–6¶WEö6öç6Vç@¢æBæ÷B&÷f–FW"æW‡FW&æÅ÷F–6¶WEö–æfW&Væ6UöÆÆ÷vV@¢“ ¢¤•$ôÔôä•Dõ%õ5DDU²&Æ7EöW'&÷"%ÒÒ€¢$WFò×G&–vRW6VC¢W‡FW&æÂF–6¶WB–æfW&Væ6R—2F—6&ÆVBâ ¢¢f÷"66R–âVæF–æuö66W3 ¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×W6VBÖ6öç6VçB"ÂG'VR¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢&WGW&à¢–b&÷f–FW"ç&WV—&W5öW‡FW&æÅ÷F–6¶WEö6öç6VçBæBæ÷B&÷f–FW"æÆ—fS ¢¤•$ôÔôä•Dõ%õ5DDU²&Æ7EöW'&÷"%ÒÒ€¢$WFò×G&–vRW6VC¢6VÆV7FVBW‡FW&æÂÖöFVÂ7&VFVçF–Ç2&Ræ÷B6öæf–wW&VB ¢&f÷"F†R7W'&VçB&÷f–FW"FW7F–æF–öââ ¢¢f÷"66R–âVæF–æuö66W3 ¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×W6VBÖÖöFVÂ×6WGW"ÂG'VR¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢&WGW&à ¢÷&FW&VE÷VæF–æuö66W2Ò6÷'FVB€¢VæF–æuö66W2Â¶W“ÖÆÖ&F—FVÓ¢—FVÒæ7&VFVEöBÂ&WfW'6SÕG'VP¢¢Æ–Ö—BÒöWFõ÷G&–vUöÆ–Ö—B‚¢6VÆV7FVEöf÷%öWFõ÷G&–vRÒ÷&FW&VE÷VæF–æuö66W5³¦Æ–Ö—EÐ¢¤•$ôÔôä•Dõ%õ5DDU²&WFõ÷G&–vUöFVfW'&VB%ÒÒÖ‚€¢ÂÆVâ†÷&FW&VE÷VæF–æuö66W2’ÒÆVâ‡6VÆV7FVEöf÷%öWFõ÷G&–vR¢¢f÷"66R–â6VÆV7FVEöf÷%öWFõ÷G&–vS ¢7–æ2v—F‚÷v÷&¶fÆ÷uöÆö6²†66Ræ–B“ ¢–bç’‡'Vâæ66Uö–BÓÒ66Ræ–Bf÷"'Vâ–â%Tå2çfÇVW2‚’“ ¢¤•$õTäD”äuõE$”tUôEDTÕE2ç÷†66Ræ–BÂæöæR¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×&WG'’×VæF–ær"ÂfÇ6R¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢6öçF–çVP¢GFV×G2Ò¤•$õTäD”äuõE$”tUôEDTÕE2ævWB†66Ræ–BÂ¢–bGFV×G2ãÒ3 ¢¤•$ôÔôä•Dõ%õ5DDU²&Æ7EöW'&÷"%ÒÒ€¢$WFò×G&–vR7F÷VBgFW"F‡&VR–çFW''WFVB÷"f–ÆVBGFV×G2â ¢¢¤•$õTäD”äuõE$”tUôEDTÕE2ç÷†66Ræ–BÂæöæR¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×&WG'’×VæF–ær"ÂfÇ6R¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vRÖf–ÆVB"ÂG'VR¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢6öçF–çVP¢2&W6W'fRF†RGFV×B&Vf÷&Rç’&÷f–FW"v÷&²â&ö6W72&W7F'BGW&–æp¢2vVæW&F–öâF†W&Vf÷&R6ææ÷B6–ÆVçFÇ’w&çBâVæ&÷VæFVB&WG'’à¢GFV×G2³Ò¢¤•$õTäD”äuõE$”tUôEDTÕE5¶66Ræ–EÒÒGFV×G0¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢G'“ ¢FWF–Ç2Òv—BFFW"ævWE÷&WVW7EöFWF–Ç2†66RæW‡FW&æÅö¶W’÷"66Ræ–B¢–b7G"†FWF–Ç2ævWB‚'7FGW5ö6FVv÷'’"Â""’’çWW"‚’ÓÒ$DôäR# ¢44U5¶66Ræ–EÒÒ66RæÖöFVÅö6÷’€¢WFFS×°¢'F—FÆR#¢FWF–Ç5²'7VÖÖ'’%ÒÀ¢&&öG’#¢FWF–Ç5²&FW67&—F–öâ%ÒÀ¢'7FGW2#¢7G"†FWF–Ç2ævWB‚'7FGW2"’÷"66Rç7FGW2’À¢Ð¢¢÷6fUö66R„44U5¶66Ræ–EÒ¢¤•$õTäD”äuõE$”tUôEDTÕE2ç÷†66Ræ–BÂæöæR¢f÷"Fr–â€¢'7GVF–ò×G&–vR×W6VBÖ¶æ÷vÆVFvR"À¢'7GVF–ò×G&–vR×W6VBÖ6öç6VçB"À¢'7GVF–ò×G&–vRÖf–ÆVB"À¢'7GVF–ò×G&–vR×&WG'’×VæF–ær"À¢“ ¢÷FuöÆö6Åö66R†66Ræ–BÂFrÂfÇ6R¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢6öçF–çVP¢66RÒ66RæÖöFVÅö6÷’€¢WFFS×°¢'F—FÆR#¢FWF–Ç5²'7VÖÖ'’%ÒÀ¢&&öG’#¢FWF–Ç5²&FW67&—F–öâ%ÒÀ¢'7FGW2#¢7G"†FWF–Ç2ævWB‚'7FGW2"’÷"66Rç7FGW2’À¢Ð¢¢44U5¶66Ræ–EÒÒ66P¢÷6fUö66R†66R¢&W7VÇBÒv—B'Vå÷v÷&¶fÆ÷r€¢66RÀ¢&÷f–FW"À¢6÷W&6U÷6æ6†÷Eö†6ƒÕ÷6÷W&6U÷6æ6†÷Eö†6‚†FWF–Ç2Â66R’À¢¢W†6WB€¢•E4Ô6öæf–wW&F–öäW'&÷"À¢•E4Õ&WVW7DW'&÷"À¢&÷f–FW$W'&÷"À¢'VçF–ÖTW'&÷"À¢’2W†3 ¢¤•$ôÔôä•Dõ%õ5DDU²&Æ7EöW'&÷"%ÒÒ€¢b$WFò×G&–vRGFV×B¶GFV×G7Òó2f–ÆVB‡·G—R†W†2’åõöæÖUõ÷Ò’â ¢¢–bGFV×G2ãÒ3 ¢¤•$õTäD”äuõE$”tUôEDTÕE2ç÷†66Ræ–BÂæöæR¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×&WG'’×VæF–ær"ÂfÇ6R¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vRÖf–ÆVB"ÂG'VR¢VÇ6S ¢¤•$õTäD”äuõE$”tUôEDTÕE5¶66Ræ–EÒÒGFV×G0¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vRÖf–ÆVB"ÂfÇ6R¢÷FuöÆö6Åö66R†66Ræ–BÂ'7GVF–ò×G&–vR×&WG'’×VæF–ær"ÂG'VR¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢6öçF–çVP¢%Tå5·&W7VÇBæ–EÒÒ&W7VÇ@¢÷6fU÷'Vâ‡&W7VÇB¢¤•$õTäD”äuõE$”tUôEDTÕE2ç÷†66Ræ–BÂæöæR¢f÷"Fr–â€¢'7GVF–ò×G&–vR×W6VBÖ¶æ÷vÆVFvR"À¢'7GVF–ò×G&–vR×W6VBÖ6öç6VçB"À¢'7GVF–ò×G&–vRÖf–ÆVB"À¢'7GVF–ò×G&–vR×&WG'’×VæF–ær"À¢“ ¢÷FuöÆö6Åö66R†66Ræ–BÂFrÂfÇ6R¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚¢¤•$ôÔôä•Dõ%õ5DDU²&WFõ÷G&–vVEö6÷VçB%ÒÒ€¢–çB„¤•$ôÔôä•Dõ%õ5DDU²&WFõ÷G&–vVEö6÷VçB%Ò’²¢¢¤•$ôÔôä•Dõ%õ5DDU²'&WG'•÷VæF–æuö6÷VçB%ÒÒÆVâ€¢¤•$õTäD”äuõE$”tUôEDTÕE0¢¢÷6fUöÖöæ—F÷%ö6†V6·ö–çB‚  ¦7–æ2FVbö¦—&öÖöæ—F÷%öÆö÷‚’ÓâæöæS ¢v†–ÆRG'VS ¢G'“ ¢v—B÷öÆÅö¦—&ööæ6R‚¢W†6WBW†6WF–öâ2W†3¢2æ÷¢$ÄSÒ¶VWF†RÖöæ—F÷"Æ—fRW"7–6ÆP¢¤•$ôÔôä•Dõ%õ5DDRçWFFR€¢Væ&ÆVCÔ¦—&6öæf–ræg&öÕöVçb‚’æ6öæf–wW&VBÀ¢Æ7EöW'&÷#Öb$¦—&Ööæ—F÷"7–6ÆRf–ÆVB‡·G—R†W†2’åõöæÖUõ÷Ò’â"À¢¢v—B7–æ6–òç6ÆVW…öÖöæ—F÷%ö–çFW'fÅ÷6V6öæG2‚’  ¤7–æ66öçFW‡FÖævW ¦7–æ2FVbÆ–fW7â…ó¢f7D’“ ¢vÆö&Â5DDUõ5Dõ$P¢÷fÆ–FFU÷&—fFUöÆö6ÅöÖöFR‚¢'VææW$WF„6öæf–ræg&öÕöVçb‚¢Ööæ—F÷#¢7–æ6–òåF6µ´æöæUÒÂæöæRÒæöæP¢'VææW%ö†V'F&VC¢7–æ6–òåF6µ´æöæUÒÂæöæRÒæöæP¢G'“ ¢5DDUõ5Dõ$RÒ6öæf–wW&VE÷7F÷&R‚¢'VææW%ö–FVçF—G’Ò'VææW$–FVçF—G’æg&öÕöVçb‚¢–b'VææW%ö–FVçF—G’—2æ÷BæöæS ¢5DDUõ5Dõ$Ræ&–æE÷'VææW%ö–FVçF—G’€¢'VææW%ö–FVçF—G’çv÷&·76Uö–BÂ'VææW%ö–FVçF—G’ç'VææW%ö–@¢¢6öæf–wW&VE÷v÷&¶fÆ÷u÷&Vv—7G'’‚’æ&–æE÷'VææW%ö–FVçF—G’€¢'VææW%ö–FVçF—G’çv÷&·76Uö–BÂ'VææW%ö–FVçF—G’ç'VææW%ö–@¢¢44U2çWFFR…5DDUõ5Dõ$RæÆöEö66W2‚’¢%Tå2çWFFR…5DDUõ5Dõ$RæÆöE÷'Vç2‚’¢÷&W7F÷&UöÖöæ—F÷%ö6†V6·ö–çB…5DDUõ5Dõ$RæÆöEöÖöæ—F÷%÷7FFR‚’¢Ööæ—F÷"Ò7–æ6–òæ7&VFU÷F6²…ö¦—&öÖöæ—F÷%öÆö÷‚’¢'VææW%ö†V'F&VBÒ7–æ6–òæ7&VFU÷F6²€¢†V'F&VEöÆö÷…%TääU%ô„T%D$TEõ5DDR¢¢––VÆ@¢f–æÆÇ“ ¢f÷"F6²–â†Ööæ—F÷"Â'VææW%ö†V'F&VB“ ¢–bF6²—2æöæS ¢6öçF–çVP¢F6²æ6æ6VÂ‚¢G'“ ¢v—BF6°¢W†6WB7–æ6–òä6æ6VÆÆVDW'&÷# ¢70¢5DDUõ5Dõ$RÒæöæP  ¦Òf7D’‡F—FÆSÒ%7W÷'Bv÷&¶fÆ÷r7GVF–ò"ÂfW'6–öãÒ#ãã"ÂÆ–fW7ãÖÆ–fW7â¦æ–æ6ÇVFU÷&÷WFW"‡v÷&¶fÆ÷uöFVf–æ—F–öç5÷&÷WFW"¥÷'VææW%ö'&÷w6W%ö÷&–v–ç2Ò°¢÷&–v–âç7G&—‚¢f÷"÷&–v–â–â÷2ævWFVçb‚%5Uõ%Eõ%TääU%ôÄÄõtTEôýxëŸ-¢G§²ÚîÆ­yÓompleted idempotent run is missing from local storage.")
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import ipaddress
+import json
+import os
+import shutil
+import sqlite3
+import tempfile
+from collections.abc import Callable
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from statistics import median
+from urllib.parse import urlsplit
+from uuid import uuid4
+
+import httpx
+from dotenv import load_dotenv, set_key, unset_key
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from starlette.responses import JSONResponse
+
+from .confluence import (
+    ConfluenceAdapter,
+    ConfluenceConfig,
+    ConfluenceConfigurationError,
+    ConfluenceRequestError,
+)
+from .control_plane.session_tokens import SessionTokenInvalid
+from .execution_plan import (
+    ExecutionPlan,
+    ExecutionPlanError,
+    compile_published_workflow,
+)
+from .fixtures import demo_cases
+from .itsm import (
+    ITSMConfigurationError,
+    ITSMOutcomeUnknown,
+    ITSMRequestError,
+    JiraConfig,
+    create_itsm_adapter,
+)
+from .knowledge import (
+    KnowledgeConfigurationError,
+    KnowledgeRequestError,
+    knowledge_status,
+)
+from .providers import ProviderConfig, ProviderError, model_destination_scope
+from .runner_auth import (
+    RunnerAuthConfig,
+    RunnerAuthConfigurationError,
+    authenticate_bearer,
+    required_roles,
+)
+from .runner_heartbeat import (
+    RunnerHeartbeatConfig,
+    RunnerHeartbeatConfigurationError,
+    heartbeat_loop,
+    heartbeat_once,
+    initial_heartbeat_state,
+)
+from .runner_identity import RunnerIdentity
+from .schemas import (
+    CaseRecord,
+    DecisionRequest,
+    IntakeRequest,
+    PublishedWorkflowRunRequest,
+    RunRequest,
+    StageRecord,
+    WorkflowResult,
+    WorkspaceMetrics,
+)
+from .store import WorkflowStateStore, configured_store
+from .workflow import content_fingerprint, review_edited_draft, run_workflow
+from .workflow_api import configured_workflow_registry
+from .workflow_api import router as workflow_definitions_router
+from .workflow_definitions import PublishedWorkflow
+
+
+def _configured_env_path() -> Path:
+    default_path = Path(__file__).resolve().parents[2] / ".env"
+    return Path(os.getenv("SUPPORT_WORKFLOW_ENV_PATH", str(default_path))).expanduser()
+
+
+load_dotenv(_configured_env_path())
+
+
+class SetupRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
+    jira_base_url: str = Field(default="", max_length=255)
+    jira_email: str = Field(default="", max_length=255)
+    jira_api_token: str = Field(default="", max_length=2000, repr=False)
+    jira_service_desk_id: str = Field(default="", max_length=40)
+    jira_queue_id: str = Field(default="", max_length=40)
+    knowledge_dir: str = Field(default="", max_length=2048)
+    knowledge_provider: str = Field(default="local", max_length=20)
+    confluence_base_url: str = Field(default="", max_length=255)
+    confluence_email: str = Field(default="", max_length=255)
+    confluence_api_token: str = Field(default="", max_length=2000, repr=False)
+    confluence_space_keys: str = Field(default="", max_length=640)
+    confluence_ticket_search_allowed: bool = False
+    auto_triage_new_tickets: bool = False
+    poll_interval_seconds: int = Field(default=60, ge=15, le=900)
+    max_auto_triage_per_poll: int = Field(default=5, ge=1, le=10)
+    n1_keywords: str = Field(default="", max_length=2000)
+    n3_plus_keywords: str = Field(default="", max_length=2000)
+    n3_keywords: str = Field(default="", max_length=2000)
+    model_provider: str | None = Field(default=None, max_length=40)
+    model_name: str | None = Field(default=None, max_length=160)
+    model_base_url: str | None = Field(default=None, max_length=255)
+    model_api_key: str = Field(default="", max_length=2000, repr=False)
+    clear_model_api_key: bool = False
+    external_model_disclosure_accepted: bool | None = None
+    runner_heartbeat_token: str = Field(default="", max_length=128, repr=False)
+    clear_runner_heartbeat_token: bool = False
+    runner_heartbeat_interval_seconds: int = Field(default=60, ge=30, le=3600)
+
+
+class JiraDiscoveryRequest(BaseModel):
+    jira_base_url: str = Field(max_length=255)
+    jira_email: str = Field(max_length=255)
+    jira_api_token: str = Field(default="", max_length=2000, repr=False)
+    service_desk_id: str = Field(default="", max_length=40)
+
+
+class ConfluenceCheckRequest(BaseModel):
+    confluence_base_url: str = Field(max_length=255)
+    confluence_email: str = Field(max_length=255)
+    confluence_api_token: str = Field(default="", max_length=2000, repr=False)
+    confluence_space_keys: str = Field(max_length=640)
+
+
+JIRA_MONITOR_STATE: dict[str, object] = {
+    "enabled": False,
+    "last_poll_at": None,
+    "last_error": None,
+    "new_cases_seen": 0,
+    "auto_triaged_count": 0,
+    "auto_triage_deferred": 0,
+    "retry_pending_count": 0,
+    "page_cap_reached": False,
+    "auto_triage_enabled": False,
+}
+RUNNER_HEARTBEAT_STATE = initial_heartbeat_state()
+JIRA_SEEN_KEYS: set[str] = set()
+JIRA_PENDING_TRIAGE_ATTEMPTS: dict[str, int] = {}
+JIRA_LOCAL_TAGS: dict[str, set[str]] = {}
+JIRA_MONITOR_LOCK = asyncio.Lock()
+JIRA_MONITOR_BASELINED = False
+JIRA_MONITOR_BASELINE_AT: datetime | None = None
+JIRA_AUTO_TRIAGE_BASELINE_AT: datetime | None = None
+JIRA_AUTO_TRIAGE_WAS_ENABLED = False
+WORKFLOW_LOCKS: dict[str, asyncio.Lock] = {}
+STATE_STORE: WorkflowStateStore | None = None
+SETUP_WRITE_LOCK = asyncio.Lock()
+
+
+def _persist_local_setup(
+    values: dict[str, str],
+    api_token: str,
+    remove_api_token: bool,
+    model_api_key: str = "",
+    remove_model_api_key: bool = False,
+    confluence_api_token: str = "",
+    remove_confluence_api_token: bool = False,
+    runner_heartbeat_token: str = "",
+    remove_runner_heartbeat_token: bool = False,
+) -> None:
+    """Atomically update ignored local configuration, then apply it in-process."""
+    env_path = _configured_env_path()
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix=".env.", suffix=".tmp", dir=env_path.parent, delete=False
+    ) as handle:
+        staged_path = Path(handle.name)
+    try:
+        if env_path.is_file():
+            shutil.copy2(env_path, staged_path)
+        for name, value in values.items():
+            set_key(str(staged_path), name, value, quote_mode="always")
+        if api_token:
+            set_key(str(staged_path), "JSM_API_TOKEN", api_token, quote_mode="always")
+        elif remove_api_token:
+            unset_key(str(staged_path), "JSM_API_TOKEN")
+        if model_api_key:
+            set_key(str(staged_path), "MODEL_API_KEY", model_api_key, quote_mode="always")
+        elif remove_model_api_key:
+            unset_key(str(staged_path), "MODEL_API_KEY")
+            unset_key(str(staged_path), "MODEL_API_KEY_SCOPE")
+        if confluence_api_token:
+            set_key(str(staged_path), "CONFLUENCE_API_TOKEN", confluence_api_token, quote_mode="always")
+        elif remove_confluence_api_token:
+            unset_key(str(staged_path), "CONFLUENCE_API_TOKEN")
+        if runner_heartbeat_token:
+            set_key(
+                str(staged_path),
+                "SUPPORT_CONTROL_PLANE_RUNNER_TOKEN",
+                runner_heartbeat_token,
+                quote_mode="always",
+            )
+        elif remove_runner_heartbeat_token:
+            unset_key(str(staged_path), "SUPPORT_CONTROL_PLANE_RUNNER_TOKEN")
+        if os.name != "nt":
+            staged_path.chmod(0o600)
+        os.replace(staged_path, env_path)
+    except Exception:
+        staged_path.unlink(missing_ok=True)
+        raise
+
+    os.environ.update(values)
+    if api_token:
+        os.environ["JSM_API_TOKEN"] = api_token
+    elif remove_api_token:
+        os.environ.pop("JSM_API_TOKEN", None)
+    if model_api_key:
+        os.environ["MODEL_API_KEY"] = model_api_key
+    elif remove_model_api_key:
+        os.environ.pop("MODEL_API_KEY", None)
+        os.environ.pop("MODEL_API_KEY_SCOPE", None)
+    if confluence_api_token:
+        os.environ["CONFLUENCE_API_TOKEN"] = confluence_api_token
+    elif remove_confluence_api_token:
+        os.environ.pop("CONFLUENCE_API_TOKEN", None)
+    if runner_heartbeat_token:
+        os.environ["SUPPORT_CONTROL_PLANE_RUNNER_TOKEN"] = runner_heartbeat_token
+    elif remove_runner_heartbeat_token:
+        os.environ.pop("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", None)
+
+
+def _save_case(case: CaseRecord) -> None:
+    if STATE_STORE is not None:
+        STATE_STORE.save_case(case)
+
+
+def _save_run(
+    run: WorkflowResult,
+    *,
+    audit_event: tuple[str, str, str, dict[str, object]] | None = None,
+    execution_claim: tuple[str, str] | None = None,
+) -> None:
+    if STATE_STORE is not None:
+        STATE_STORE.save_run(run, audit_event=audit_event, execution_claim=execution_claim)
+
+
+def _record_published_execution_stage(
+    store: WorkflowStateStore,
+    idempotency_key: str,
+    lease_owner: str,
+    run_id: str,
+    attempt: int,
+    stage: StageRecord,
+    ordinal: int,
+) -> None:
+    now = datetime.now(UTC)
+    if not store.renew_published_run_claim(idempotency_key, lease_owner, now):
+        raise RuntimeError("Published workflow execution lease expired or was transferred.")
+    store.record_execution_step(
+        run_id=run_id,
+        attempt=attempt,
+        ordinal=ordinal,
+        stage_id=stage.id,
+        status=stage.status,
+        elapsed_ms=stage.elapsed_ms,
+        recorded_at=now,
+    )
+
+
+def _enabled_env(name: str) -> bool:
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _monitor_checkpoint() -> dict[str, object]:
+    return {
+        "seen_keys": sorted(JIRA_SEEN_KEYS),
+        "pending_attempts": dict(JIRA_PENDING_TRIAGE_ATTEMPTS),
+        "local_tags": {case_id: sorted(tags) for case_id, tags in JIRA_LOCAL_TAGS.items()},
+        "monitor_baselined": JIRA_MONITOR_BASELINED,
+        "monitor_baseline_at": JIRA_MONITOR_BASELINE_AT.isoformat() if JIRA_MONITOR_BASELINE_AT else None,
+        "auto_triage_baseline_at": JIRA_AUTO_TRIAGE_BASELINE_AT.isoformat() if JIRA_AUTO_TRIAGE_BASELINE_AT else None,
+        "auto_triage_was_enabled": JIRA_AUTO_TRIAGE_WAS_ENABLED,
+    }
+
+
+def _save_monitor_checkpoint() -> None:
+    if STATE_STORE is not None:
+        STATE_STORE.save_monitor_state(_monitor_checkpoint())
+
+
+def _restore_monitor_checkpoint(state: dict[str, object]) -> None:
+    global JIRA_MONITOR_BASELINED, JIRA_MONITOR_BASELINE_AT
+    global JIRA_AUTO_TRIAGE_BASELINE_AT, JIRA_AUTO_TRIAGE_WAS_ENABLED
+    seen = state.get("seen_keys")
+    if isinstance(seen, list):
+        JIRA_SEEN_KEYS.update(value for value in seen if isinstance(value, str))
+    attempts = state.get("pending_attempts")
+    if isinstance(attempts, dict):
+        for case_id, count in attempts.items():
+            if isinstance(case_id, str) and isinstance(count, int) and 0 <= count <= 3:
+                JIRA_PENDING_TRIAGE_ATTEMPTS[case_id] = count
+    tags = state.get("local_tags")
+    if isinstance(tags, dict):
+        for case_id, values in tags.items():
+            if isinstance(case_id, str) and isinstance(values, list):
+                JIRA_LOCAL_TAGS[case_id] = {
+                    tag for tag in values if isinstance(tag, str) and tag.startswith("studio-triage-")
+                }
+    for case_id, case in CASES.items():
+        JIRA_LOCAL_TAGS.setdefault(
+            case_id, {tag for tag in case.tags if tag.startswith("studio-triage-")}
+        )
+    JIRA_MONITOR_BASELINED = state.get("monitor_baselined") is True
+    for name, global_name in (
+        ("monitor_baseline_at", "monitor"),
+        ("auto_triage_baseline_at", "auto"),
+    ):
+        raw = state.get(name)
+        try:
+            value = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            value = None
+        if global_name == "monitor":
+            JIRA_MONITOR_BASELINE_AT = value
+        else:
+            JIRA_AUTO_TRIAGE_BASELINE_AT = value
+    JIRA_AUTO_TRIAGE_WAS_ENABLED = state.get("auto_triage_was_enabled") is True
+
+
+def _private_local_mode_enabled() -> bool:
+    return _enabled_env("PRIVATE_LOCAL_MODE")
+
+
+def _validate_private_local_mode() -> None:
+    if not _private_local_mode_enabled():
+        return
+    provider = ProviderConfig.from_env()
+    if provider.provider != "ollama-local" or not provider.live:
+        raise RuntimeError(
+            "PRIVATE_LOCAL_MODE requires MODEL_PROVIDER=ollama-local, a loopback endpoint, and a model name."
+        )
+    if any(
+        os.getenv(name, "").strip()
+        for name in (
+            "JSM_BASE_URL",
+            "JSM_USER_EMAIL",
+            "JSM_API_TOKEN",
+            "JSM_SERVICE_DESK_ID",
+            "JSM_QUEUE_ID",
+        )
+    ):
+        raise RuntimeError(
+            "PRIVATE_LOCAL_MODE refuses Jira connector configuration; remove all JSM settings."
+        )
+    if (
+        _enabled_env("ALLOW_EXTERNAL_TICKET_INFERENCE")
+        or _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS")
+        or any(
+            os.getenv(name, "").strip()
+            for name in (
+                "COUNCIL_PROVIDER",
+                "COUNCIL_MODEL",
+                "COUNCIL_API_KEY",
+                "COUNCIL_BASE_URL",
+                "JUDGE_PROVIDER",
+                "JUDGE_MODEL",
+                "JUDGE_API_KEY",
+                "JUDGE_BASE_URL",
+            )
+        )
+    ):
+        raise RuntimeError(
+            "PRIVATE_LOCAL_MODE refuses external inference consent and council/judge profiles."
+        )
+
+
+def _workflow_lock(case_id: str) -> asyncio.Lock:
+    return WORKFLOW_LOCKS.setdefault(case_id, asyncio.Lock())
+
+
+def _tag_local_case(case_id: str, tag: str, enabled: bool) -> None:
+    tags = JIRA_LOCAL_TAGS.setdefault(case_id, set())
+    if enabled:
+        tags.add(tag)
+    else:
+        tags.discard(tag)
+    if not tags:
+        JIRA_LOCAL_TAGS.pop(case_id, None)
+    case = CASES.get(case_id)
+    if case is not None:
+        preserved = [item for item in case.tags if item.startswith("studio-triage-")]
+        case_tags = set(case.tags) - set(preserved)
+        case_tags.update(JIRA_LOCAL_TAGS.get(case_id, set()))
+        CASES[case_id] = case.model_copy(update={"tags": sorted(case_tags)})
+        _save_case(CASES[case_id])
+
+
+def _monitor_interval_seconds() -> int:
+    try:
+        configured = int(os.getenv("JSM_POLL_INTERVAL_SECONDS", "60"))
+    except ValueError:
+        configured = 60
+    return max(15, min(900, configured))
+
+
+def _auto_triage_limit() -> int:
+    try:
+        configured = int(os.getenv("JSM_AUTO_TRIAGE_MAX_PER_POLL", "5"))
+    except ValueError:
+        configured = 5
+    return max(1, min(10, configured))
+
+
+def _created_after_baseline(created_at: str, baseline: datetime | None) -> bool:
+    if baseline is None:
+        return False
+    try:
+        created = datetime.fromisoformat(created_at)
+    except ValueError:
+        return False
+    if created.tzinfo is None:
+        return False
+    return created.astimezone(UTC) > baseline
+
+
+async def _poll_jira_once() -> None:
+    global JIRA_MONITOR_BASELINED, JIRA_MONITOR_BASELINE_AT
+    global JIRA_AUTO_TRIAGE_BASELINE_AT, JIRA_AUTO_TRIAGE_WAS_ENABLED
+    if _private_local_mode_enabled():
+        JIRA_MONITOR_STATE.update(enabled=False, last_error=None)
+        return
+    config = JiraConfig.from_env()
+    if not config.configured:
+        JIRA_MONITOR_STATE.update(enabled=False, last_error=None)
+        return
+    adapter = create_itsm_adapter("jira-service-management", config)
+
+    auto_triage = _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS")
+    async with JIRA_MONITOR_LOCK:
+        poll_started_at = datetime.now(UTC)
+        if auto_triage and not JIRA_AUTO_TRIAGE_WAS_ENABLED:
+            JIRA_AUTO_TRIAGE_BASELINE_AT = poll_started_at
+        elif not auto_triage:
+            JIRA_AUTO_TRIAGE_BASELINE_AT = None
+        JIRA_AUTO_TRIAGE_WAS_ENABLED = auto_triage
+        remote_cases: list[CaseRecord] = []
+        page_size = 50
+        maximum = 200
+        page_cap_reached = False
+        for start in range(0, maximum + page_size, page_size):
+            page = await adapter.list_queue_cases(limit=page_size, start=start)
+            if start == maximum:
+                page_cap_reached = bool(page)
+                break
+            remote_cases.extend(page)
+            if len(page) < page_size:
+                break
+        unique_cases = {case.id: case for case in remote_cases}
+        remote_cases = list(unique_cases.values())
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        new_cases = [case for case in remote_cases if case.id not in JIRA_SEEN_KEYS]
+        for case in remote_cases:
+            CASES[case.id] = case.model_copy(
+                update={
+                    "tags": sorted(set(case.tags) | JIRA_LOCAL_TAGS.get(case.id, set()))
+                }
+            )
+            _save_case(CASES[case.id])
+
+        JIRA_SEEN_KEYS.update(case.id for case in remote_cases)
+        # The first successful poll establishes a creation-time baseline. The
+        # auto-triage baseline also resets when its opt-in setting is enabled.
+        if not JIRA_MONITOR_BASELINED:
+            JIRA_MONITOR_BASELINED = True
+            JIRA_MONITOR_BASELINE_AT = poll_started_at
+        new_cases_after_monitor_baseline = [
+            case
+            for case in new_cases
+            if _created_after_baseline(case.created_at, JIRA_MONITOR_BASELINE_AT)
+        ]
+        new_cases_seen = len(new_cases_after_monitor_baseline)
+        new_cases = [
+            case
+            for case in new_cases_after_monitor_baseline
+            if auto_triage
+            and _created_after_baseline(case.created_at, JIRA_AUTO_TRIAGE_BASELINE_AT)
+        ]
+
+        current_ids = {case.id for case in remote_cases}
+        for case_id in list(JIRA_PENDING_TRIAGE_ATTEMPTS):
+            if case_id not in current_ids and not page_cap_reached:
+                JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case_id, None)
+                _tag_local_case(case_id, "studio-triage-retry-pending", False)
+        if auto_triage:
+            for case in new_cases:
+                JIRA_PENDING_TRIAGE_ATTEMPTS.setdefault(case.id, 0)
+        pending_cases = [
+            case
+            for case in remote_cases
+            if case.id in JIRA_PENDING_TRIAGE_ATTEMPTS
+        ]
+        JIRA_MONITOR_STATE.update(
+            enabled=True,
+            last_poll_at=now,
+            last_error=None,
+            new_cases_seen=new_cases_seen,
+            auto_triaged_count=0,
+            auto_triage_deferred=0,
+            retry_pending_count=len(JIRA_PENDING_TRIAGE_ATTEMPTS),
+            page_cap_reached=page_cap_reached,
+            auto_triage_enabled=auto_triage,
+        )
+        _save_monitor_checkpoint()
+
+    if not auto_triage or not pending_cases:
+        return
+
+    knowledge = knowledge_status()
+    provider = ProviderConfig.from_env()
+    if (
+        knowledge["mode"] != "local"
+        or not knowledge["configured"]
+        or not knowledge["available"]
+    ):
+        JIRA_MONITOR_STATE["last_error"] = (
+            "Auto-triage paused: operator knowledge is not configured."
+        )
+        for case in pending_cases:
+            _tag_local_case(case.id, "studio-triage-paused-knowledge", True)
+        _save_monitor_checkpoint()
+        return
+    if (
+        provider.requires_external_ticket_consent
+        and not provider.external_ticket_inference_allowed
+    ):
+        JIRA_MONITOR_STATE["last_error"] = (
+            "Auto-triage paused: external ticket inference is disabled."
+        )
+        for case in pending_cases:
+            _tag_local_case(case.id, "studio-triage-paused-consent", True)
+        _save_monitor_checkpoint()
+        return
+    if provider.requires_external_ticket_consent and not provider.live:
+        JIRA_MONITOR_STATE["last_error"] = (
+            "Auto-triage paused: selected external model credentials are not configured "
+            "for the current provider destination."
+        )
+        for case in pending_cases:
+            _tag_local_case(case.id, "studio-triage-paused-model-setup", True)
+        _save_monitor_checkpoint()
+        return
+
+    ordered_pending_cases = sorted(
+        pending_cases, key=lambda item: item.created_at, reverse=True
+    )
+    limit = _auto_triage_limit()
+    selected_for_auto_triage = ordered_pending_cases[:limit]
+    JIRA_MONITOR_STATE["auto_triage_deferred"] = max(
+        0, len(ordered_pending_cases) - len(selected_for_auto_triage)
+    )
+    for case in selected_for_auto_triage:
+        async with _workflow_lock(case.id):
+            if any(run.case_id == case.id for run in RUNS.values()):
+                JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+                _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                _save_monitor_checkpoint()
+                continue
+            attempts = JIRA_PENDING_TRIAGE_ATTEMPTS.get(case.id, 0)
+            if attempts >= 3:
+                JIRA_MONITOR_STATE["last_error"] = (
+                    "Auto-triage stopped after three interrupted or failed attempts."
+                )
+                JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+                _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                _tag_local_case(case.id, "studio-triage-failed", True)
+                _save_monitor_checkpoint()
+                continue
+            # Reserve the attempt before any provider work. A process restart during
+            # generation therefore cannot silently grant an unbounded retry.
+            attempts += 1
+            JIRA_PENDING_TRIAGE_ATTEMPTS[case.id] = attempts
+            _save_monitor_checkpoint()
+            try:
+                details = await adapter.get_request_details(case.external_key or case.id)
+                if str(details.get("status_category", "")).upper() == "DONE":
+                    CASES[case.id] = case.model_copy(
+                        update={
+                            "title": details["summary"],
+                            "body": details["description"],
+                            "status": str(details.get("status") or case.status),
+                        }
+                    )
+                    _save_case(CASES[case.id])
+                    JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+                    for tag in (
+                        "studio-triage-paused-knowledge",
+                        "studio-triage-paused-consent",
+                        "studio-triage-failed",
+                        "studio-triage-retry-pending",
+                    ):
+                        _tag_local_case(case.id, tag, False)
+                    _save_monitor_checkpoint()
+                    continue
+                case = case.model_copy(
+                    update={
+                        "title": details["summary"],
+                        "body": details["description"],
+                        "status": str(details.get("status") or case.status),
+                    }
+                )
+                CASES[case.id] = case
+                _save_case(case)
+                result = await run_workflow(
+                    case,
+                    provider,
+                    source_snapshot_hash=_source_snapshot_hash(details, case),
+                )
+            except (
+                ITSMConfigurationError,
+                ITSMRequestError,
+                ProviderError,
+                RuntimeError,
+            ) as exc:
+                JIRA_MONITOR_STATE["last_error"] = (
+                    f"Auto-triage attempt {attempts}/3 failed ({type(exc).__name__})."
+                )
+                if attempts >= 3:
+                    JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+                    _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                    _tag_local_case(case.id, "studio-triage-failed", True)
+                else:
+                    JIRA_PENDING_TRIAGE_ATTEMPTS[case.id] = attempts
+                    _tag_local_case(case.id, "studio-triage-failed", False)
+                    _tag_local_case(case.id, "studio-triage-retry-pending", True)
+                _save_monitor_checkpoint()
+                continue
+            RUNS[result.id] = result
+            _save_run(result)
+            JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+            for tag in (
+                "studio-triage-paused-knowledge",
+                "studio-triage-paused-consent",
+                "studio-triage-failed",
+                "studio-triage-retry-pending",
+            ):
+                _tag_local_case(case.id, tag, False)
+            _save_monitor_checkpoint()
+            JIRA_MONITOR_STATE["auto_triaged_count"] = (
+                int(JIRA_MONITOR_STATE["auto_triaged_count"]) + 1
+            )
+    JIRA_MONITOR_STATE["retry_pending_count"] = len(
+        JIRA_PENDING_TRIAGE_ATTEMPTS
+    )
+    _save_monitor_checkpoint()
+
+
+async def _jira_monitor_loop() -> None:
+    while True:
+        try:
+            await _poll_jira_once()
+        except Exception as exc:  # noqa: BLE001 - keep the monitor alive per cycle
+            JIRA_MONITOR_STATE.update(
+                enabled=JiraConfig.from_env().configured,
+                last_error=f"Jira monitor cycle failed ({type(exc).__name__}).",
+            )
+        await asyncio.sleep(_monitor_interval_seconds())
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global STATE_STORE
+    _validate_private_local_mode()
+    RunnerAuthConfig.from_env()
+    monitor: asyncio.Task[None] | None = None
+    runner_heartbeat: asyncio.Task[None] | None = None
+    try:
+        STATE_STORE = configured_store()
+        runner_identity = RunnerIdentity.from_env()
+        if runner_identity is not None:
+            STATE_STORE.bind_runner_identity(
+                runner_identity.workspace_id, runner_identity.runner_id
+            )
+            configured_workflow_registry().bind_runner_identity(
+                runner_identity.workspace_id, runner_identity.runner_id
+            )
+        CASES.update(STATE_STORE.load_cases())
+        RUNS.update(STATE_STORE.load_runs())
+        _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
+        monitor = asyncio.create_task(_jira_monitor_loop())
+        runner_heartbeat = asyncio.create_task(
+            heartbeat_loop(RUNNER_HEARTBEAT_STATE)
+        )
+        yield
+    finally:
+        for task in (monitor, runner_heartbeat):
+            if task is None:
+                continue
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        STATE_STORE = None
+
+
+app = FastAPI(title="Support Workflow Studio", version="0.1.0", lifespan=lifespan)
+app.include_router(workflow_definitions_router)
+_runner_browser_origins = [
+    origin.strip()
+    for origin in os.getenv("SUPPORT_RUNNER_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        *_runner_browser_origins,
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+)
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_error(
+    _: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Describe invalid fields without echoing submitted values such as tokens."""
+    messages: list[str] = []
+    reasons = {
+        "missing": "is required",
+        "string_too_long": "is too long",
+        "string_too_short": "is too short",
+        "int_parsing": "must be an integer",
+        "greater_than_equal": "is below its minimum",
+        "less_than_equal": "is above its maximum",
+    }
+    for error in exc.errors():
+        location = [str(part) for part in error.get("loc", ()) if part != "body"]
+        field = ".".join(location) or "request"
+        reason = reasons.get(str(error.get("type", "")), "is invalid")
+        messages.append(f"{field} {reason}")
+    detail = "; ".join(messages) or "Request validation failed."
+    return JSONResponse(status_code=422, content={"detail": detail})
+
+
+@app.middleware("http")
+async def require_local_client(request: Request, call_next) -> Response:
+    """Keep loopback-only defaults; require workspace sessions for remote mode."""
+    host = request.client.host if request.client else ""
+    allowed_hostnames = {"localhost", "127.0.0.1", "::1"}
+    try:
+        auth_config = RunnerAuthConfig.from_env()
+    except RunnerAuthConfigurationError:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Runner session verification is unavailable."},
+        )
+    if auth_config is not None:
+        hostname = (request.url.hostname or "").casefold()
+        if hostname not in allowed_hostnames | auth_config.allowed_hosts:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "The request hostname is not configured for this runner."},
+            )
+        origin = request.headers.get("origin")
+        if origin:
+            parsed_origin = urlsplit(origin)
+            normalized_origin = f"{parsed_origin.scheme}://{parsed_origin.netloc}".casefold()
+            same_origin = normalized_origin == (
+                f"{request.url.scheme}://{request.url.netloc}"
+            ).casefold()
+            valid_origin = (
+                bool(parsed_origin.hostname)
+                and parsed_origin.scheme in {"http", "https"}
+                and not parsed_origin.username
+                and not parsed_origin.password
+                and parsed_origin.path in {"", "/"}
+                and not parsed_origin.query
+                and not parsed_origin.fragment
+            )
+            if not valid_origin or (
+                not same_origin and normalized_origin not in auth_config.allowed_origins
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "The browser origin is not configured for this runner."},
+                )
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        remote_client = host != "testclient" and (
+            address is None or not address.is_loopback
+        )
+        if (
+            remote_client
+            and request.url.scheme != "https"
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Remote runner requests require HTTPS."},
+            )
+        if request.method == "GET" and request.url.path == "/api/auth/config":
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if request.url.path.startswith("/api/"):
+            try:
+                claims = authenticate_bearer(
+                    request.headers.get("authorization"), config=auth_config
+                )
+            except SessionTokenInvalid:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid workspace runner session is required."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            except (RunnerAuthConfigurationError, RuntimeError):
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Runner session verification is unavailable."},
+                )
+            allowed_roles = required_roles(request.method, request.url.path)
+            if allowed_roles is None or claims["role"] not in allowed_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "The workspace role cannot perform this action."},
+                )
+            request.state.support_actor = {
+                "workspace_id": auth_config.identity.workspace_id,
+                "runner_id": auth_config.identity.runner_id,
+                "actor_id": auth_config.actor_id(claims["sub"]),
+                "role": claims["role"],
+            }
+        return await call_next(request)
+
+    if host == "testclient":
+        return await call_next(request)
+    if request.url.hostname not in allowed_hostnames:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "This prototype only accepts loopback hostnames."},
+        )
+    origin = request.headers.get("origin")
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and origin:
+        parsed_origin = urlsplit(origin)
+        normalized_origin = f"{parsed_origin.scheme}://{parsed_origin.netloc}".casefold()
+        same_origin = normalized_origin == (
+            f"{request.url.scheme}://{request.url.netloc}"
+        ).casefold()
+        vite_dev_origin = normalized_origin in {
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        }
+        valid_origin = (
+            parsed_origin.scheme == "http"
+            and parsed_origin.hostname in allowed_hostnames
+            and not parsed_origin.username
+            and not parsed_origin.password
+            and parsed_origin.path in {"", "/"}
+            and not parsed_origin.query
+            and not parsed_origin.fragment
+        )
+        if not valid_origin or not (same_origin or vite_dev_origin):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-origin local actions are not allowed."},
+            )
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    trusted_local_client = None
+    configured_trusted_client = os.getenv("SUPPORT_TRUSTED_LOCAL_CLIENT_IP", "").strip()
+    if configured_trusted_client:
+        try:
+            trusted_local_client = ipaddress.ip_address(configured_trusted_client)
+        except ValueError:
+            trusted_local_client = None
+    if address is None or (not address.is_loopback and address != trusted_local_client):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "This prototype only accepts local connections."},
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def secure_browser_response(request: Request, call_next) -> Response:
+    """Protect the browser token surface and avoid caching support app HTML."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self' https:; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self' data:; "
+        "connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:*",
+    )
+    if request.url.path in {"/", "/index.html", "/api/auth/config"}:
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
+CASES: dict[str, CaseRecord] = {case.id: case for case in demo_cases()}
+RUNS: dict[str, WorkflowResult] = {}
+PUBLISH_LOCKS: dict[str, asyncio.Lock] = {}
+DECISION_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+@app.get("/api/auth/config")
+async def support_auth_config() -> dict[str, object]:
+    try:
+        auth_config = RunnerAuthConfig.from_env()
+    except RunnerAuthConfigurationError as exc:
+        raise HTTPException(
+            status_code=503, detail="Runner authentication is not configured safely."
+        ) from exc
+    if auth_config is None:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "workspace_id": auth_config.identity.workspace_id,
+        "runner_id": auth_config.identity.runner_id,
+        "control_plane_api_url": auth_config.control_plane_api_url,
+    }
+
+
+@app.get("/api/health")
+async def health() -> dict[str, str | bool]:
+    config = ProviderConfig.from_env()
+    return {
+        "status": "ok",
+        "provider_mode": "live" if config.live else "demo",
+        "provider": config.provider,
+        "model": config.model,
+        "credentials_configured": config.live,
+        "private_local_mode": _private_local_mode_enabled(),
+    }
+
+
+@app.get("/health/live")
+async def liveness() -> dict[str, str]:
+    """Process liveness probe; it deliberately does not depend on connectors."""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+async def readiness() -> dict[str, str]:
+    """Readiness probe for local execution; never reports provider credentials."""
+    store = STATE_STORE
+    if store is None:
+        raise HTTPException(status_code=503, detail="Local state storage is not ready.")
+    try:
+        store.check_ready()
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Local state storage is not ready.") from exc
+    return {"status": "ready", "storage": "available"}
+
+
+@app.get("/api/setup")
+async def get_setup() -> dict[str, object]:
+    """Return editable setup state without ever returning the stored API token."""
+    jira = JiraConfig.from_env()
+    model = ProviderConfig.from_env()
+    confluence_base_url = os.getenv("CONFLUENCE_BASE_URL", "")
+    confluence_email = os.getenv("CONFLUENCE_USER_EMAIL", "")
+    confluence_spaces = os.getenv("CONFLUENCE_SPACE_KEYS", "")
+    confluence_token = os.getenv("CONFLUENCE_API_TOKEN", "").strip()
+    confluence_token_configured = False
+    try:
+        confluence_setup = ConfluenceConfig(
+            base_url=confluence_base_url,
+            email=confluence_email,
+            api_token=confluence_token or "configured-placeholder",
+            space_keys=tuple(value.strip() for value in confluence_spaces.split(",") if value.strip()),
+        )
+        confluence_setup.validate()
+        confluence_scope = confluence_setup.credential_scope
+        confluence_consent_scope = confluence_setup.consent_scope
+        confluence_token_configured = bool(confluence_token) and (
+            os.getenv("CONFLUENCE_API_TOKEN_SCOPE", "").strip() == confluence_scope
+        )
+    except ConfluenceConfigurationError:
+        confluence_scope = ""
+        confluence_consent_scope = ""
+    return {
+        "jira_base_url": jira.base_url,
+        "jira_email": jira.email,
+        "jira_service_desk_id": jira.service_desk_id,
+        "jira_queue_id": jira.queue_id,
+        "jira_token_configured": bool(jira.api_token),
+        "knowledge_dir": os.getenv("KNOWLEDGE_DIR", ""),
+        "knowledge_provider": os.getenv("KNOWLEDGE_PROVIDER", "local"),
+        "confluence_base_url": confluence_base_url,
+        "confluence_email": confluence_email,
+        "confluence_space_keys": confluence_spaces,
+        "confluence_api_token_configured": confluence_token_configured,
+        "confluence_ticket_search_allowed": (
+            _enabled_env("CONFLUENCE_TICKET_SEARCH_ALLOWED")
+            and bool(confluence_consent_scope)
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip() == confluence_consent_scope
+        ),
+        "auto_triage_new_tickets": _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS"),
+        "poll_interval_seconds": _monitor_interval_seconds(),
+        "max_auto_triage_per_poll": _auto_triage_limit(),
+        "n1_keywords": os.getenv("SUPPORT_N1_KEYWORDS", ""),
+        "n3_plus_keywords": os.getenv("SUPPORT_N3_PLUS_KEYWORDS", ""),
+        "n3_keywords": os.getenv("SUPPORT_N3_KEYWORDS", ""),
+        "model_provider": model.provider,
+        "model_name": model.model,
+        "model_base_url": model.base_url,
+        "model_api_key_configured": bool(model.api_key),
+        "external_model_disclosure_accepted": model.external_ticket_inference_allowed,
+        "private_local_mode": _private_local_mode_enabled(),
+        "control_plane_api_url": os.getenv("SUPPORT_CONTROL_PLANE_API_URL", ""),
+        "runner_id": os.getenv("SUPPORT_RUNNER_ID", ""),
+        "runner_heartbeat_token_configured": bool(
+            os.getenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", "").strip()
+        ),
+        "runner_heartbeat_interval_seconds": _runner_heartbeat_interval_seconds(),
+        "runner_heartbeat": dict(RUNNER_HEARTBEAT_STATE),
+    }
+
+
+def _runner_heartbeat_interval_seconds() -> int:
+    try:
+        interval = int(os.getenv("SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS", "60"))
+    except ValueError:
+        return 60
+    return interval if 30 <= interval <= 3600 else 60
+
+
+def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str, bool]:
+    """Validate local model settings without sending a prompt or probing a provider."""
+    current = ProviderConfig.from_env()
+    provider = (settings.model_provider or current.provider).strip().lower()
+    model_name = (settings.model_name if settings.model_name is not None else current.model).strip()
+    base_url = (
+        settings.model_base_url
+        if settings.model_base_url is not None
+        else current.base_url
+    ).strip().rstrip("/")
+    api_key = settings.model_api_key.strip()
+    target_scope = model_destination_scope(provider, base_url)
+    current_scope = model_destination_scope(current.provider, current.base_url)
+    saved_key = os.getenv("MODEL_API_KEY", "").strip()
+    saved_key_scope = os.getenv("MODEL_API_KEY_SCOPE", "").strip()
+    saved_consent_scope = os.getenv("MODEL_CONSENT_SCOPE", "").strip()
+    previously_consented_here = (
+        current.external_ticket_inference_allowed
+        and saved_consent_scope == target_scope
+    )
+    consent = (
+        settings.external_model_disclosure_accepted
+        if settings.external_model_disclosure_accepted is not None
+        else previously_consented_here
+    )
+    model_fields_submitted = any(
+        value is not None
+        for value in (
+            settings.model_provider,
+            settings.model_name,
+            settings.model_base_url,
+            settings.external_model_disclosure_accepted,
+        )
+    )
+    if not model_fields_submitted and not api_key and not settings.clear_model_api_key:
+        return {}, "", False
+
+    supported = {"demo", "openai-compatible", "anthropic", "ollama-local"}
+    if provider not in supported:
+        raise HTTPException(status_code=422, detail="Choose demo, OpenAI-compatible, Anthropic, or local Ollama.")
+    if provider != "demo" and not model_name:
+        raise HTTPException(status_code=422, detail="A model name is required for the selected provider.")
+    if settings.clear_model_api_key and api_key:
+        raise HTTPException(status_code=422, detail="Choose either a replacement model key or remove the saved key.")
+
+    if settings.clear_model_api_key:
+        effective_key = ""
+    elif api_key:
+        effective_key = api_key
+    elif saved_key and target_scope == saved_key_scope:
+        effective_key = saved_key
+    elif not saved_key and target_scope == current_scope and current.api_key:
+        # Supports an operator-provided GROQ_API_KEY at its matching endpoint only.
+        effective_key = current.api_key
+    else:
+        effective_key = ""
+    if provider in {"openai-compatible", "anthropic"}:
+        if not effective_key:
+            raise HTTPException(status_code=422, detail="Enter a model API key before selecting this provider.")
+        if not consent:
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm that the selected external model provider will receive ticket content before saving.",
+            )
+    if _private_local_mode_enabled() and provider != "ollama-local":
+        raise HTTPException(status_code=403, detail="Private local mode only allows local Ollama models.")
+
+    if provider == "openai-compatible":
+        parsed = urlsplit(base_url)
+        host = (parsed.hostname or "").casefold()
+        try:
+            try:
+                address = ipaddress.ip_address(host) if host else None
+            except ValueError:
+                address = None
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Model endpoint URL is invalid.") from exc
+        loopback = (address is not None and address.is_loopback) or host == "localhost"
+        if (
+            not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+            or (parsed.scheme == "https" and port not in (None, 443))
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Model endpoint must use HTTPS, or HTTP on a local loopback host, without credentials, query, or fragment.",
+            )
+    elif provider == "ollama-local":
+        parsed = urlsplit(base_url)
+        host = (parsed.hostname or "").casefold()
+        try:
+            try:
+                address = ipaddress.ip_address(host) if host else None
+            except ValueError:
+                address = None
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Local Ollama endpoint URL is invalid.") from exc
+        loopback = (address is not None and address.is_loopback) or host == "localhost"
+        if (
+            parsed.scheme != "http"
+            or not loopback
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+            or port not in (None, 80, 11434)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Local Ollama must use an HTTP loopback URL on port 80 or 11434 without a path or credentials.",
+            )
+
+    values = {
+        "MODEL_PROVIDER": provider,
+        "MODEL_NAME": model_name or "Synthetic workflow model",
+        "MODEL_BASE_URL": base_url,
+        "ALLOW_EXTERNAL_TICKET_INFERENCE": str(bool(consent)).lower(),
+        "MODEL_CONSENT_SCOPE": target_scope,
+    }
+    if api_key or (saved_key and target_scope == saved_key_scope and not settings.clear_model_api_key):
+        values["MODEL_API_KEY_SCOPE"] = target_scope
+    return values, api_key, settings.clear_model_api_key
+
+
+def _jira_discovery_config(settings: JiraDiscoveryRequest) -> JiraConfig:
+    if _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Jira discovery is disabled while PRIVATE_LOCAL_MODE is active.",
+        )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in (settings.jira_base_url, settings.jira_email, settings.jira_api_token, settings.service_desk_id)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Jira setup fields contain unsupported control characters.")
+    api_token = settings.jira_api_token.strip() or os.getenv("JSM_API_TOKEN", "").strip()
+    config = JiraConfig(
+        settings.jira_base_url.strip().rstrip("/"),
+        settings.jira_email.strip(),
+        api_token,
+        settings.service_desk_id.strip(),
+        "",
+    )
+    try:
+        config.validate(require_queue_ids=False)
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return config
+
+
+def _confluence_setup_config(
+    base_url: str, email: str, api_token: str, space_keys: str
+) -> ConfluenceConfig:
+    spaces = tuple(value.strip().upper() for value in space_keys.split(",") if value.strip())
+    candidate = ConfluenceConfig(
+        base_url=base_url.strip().rstrip("/"),
+        email=email.strip(),
+        api_token=api_token.strip() or "configured-placeholder",
+        space_keys=spaces,
+    )
+    candidate.validate()
+    if not api_token.strip():
+        saved_token = os.getenv("CONFLUENCE_API_TOKEN", "").strip()
+        saved_scope = os.getenv("CONFLUENCE_API_TOKEN_SCOPE", "").strip()
+        if not saved_token or saved_scope != candidate.credential_scope:
+            raise HTTPException(
+                status_code=422,
+                detail="Enter a Confluence API token for this site, account, and space selection.",
+            )
+        candidate = ConfluenceConfig(
+            base_url=candidate.base_url,
+            email=candidate.email,
+            api_token=saved_token,
+            space_keys=candidate.space_keys,
+        )
+    return candidate
+
+
+@app.post("/api/setup/confluence/check")
+async def check_confluence_connection(settings: ConfluenceCheckRequest) -> dict[str, object]:
+    """Check Confluence reachability only after the operator clicks the check button."""
+    if _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Confluence connections are disabled while PRIVATE_LOCAL_MODE is active.",
+        )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in (settings.confluence_base_url, settings.confluence_email,
+                      settings.confluence_api_token, settings.confluence_space_keys)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Confluence setup fields contain unsupported control characters.")
+    try:
+        config = _confluence_setup_config(
+            settings.confluence_base_url,
+            settings.confluence_email,
+            settings.confluence_api_token,
+            settings.confluence_space_keys,
+        )
+        return await ConfluenceAdapter(config).check_connection()
+    except ConfluenceConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ConfluenceRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/setup/jira/workspaces")
+async def discover_jira_workspaces(settings: JiraDiscoveryRequest) -> list[dict[str, str]]:
+    """Discover accessible service desks without persisting submitted credentials."""
+    config = _jira_discovery_config(settings)
+    try:
+        return await create_itsm_adapter("jira-service-management", config).list_workspaces()
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Jira service desk lookup failed: {exc}") from exc
+
+
+@app.post("/api/setup/jira/queues")
+async def discover_jira_queues(settings: JiraDiscoveryRequest) -> list[dict[str, str]]:
+    """Discover queues from one selected service desk without saving settings."""
+    config = _jira_discovery_config(settings)
+    try:
+        return await create_itsm_adapter("jira-service-management", config).list_queues(settings.service_desk_id)
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Jira queue lookup failed: {exc}") from exc
+
+
+@app.put("/api/setup")
+async def save_setup(settings: SetupRequest) -> dict[str, object]:
+    """Verify an optional Jira connection, then save local operator settings."""
+    model_env_values, model_api_key, remove_model_api_key = _validated_model_setup(settings)
+    knowledge_provider = settings.knowledge_provider.strip().lower()
+    if knowledge_provider not in {"local", "confluence"}:
+        raise HTTPException(status_code=422, detail="Choose local files or Confluence Cloud as the knowledge source.")
+    connection_values = (
+        settings.jira_base_url,
+        settings.jira_email,
+        settings.jira_api_token,
+        settings.jira_service_desk_id,
+        settings.jira_queue_id,
+        settings.knowledge_dir,
+        settings.confluence_base_url,
+        settings.confluence_email,
+        settings.confluence_api_token,
+        settings.confluence_space_keys,
+        settings.model_provider or "",
+        settings.model_name or "",
+        settings.model_base_url or "",
+        settings.model_api_key,
+        settings.runner_heartbeat_token,
+    )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in connection_values
+        for character in value
+    ) or any(
+        (ord(character) < 32 and character != "\n") or ord(character) == 127
+        for value in (settings.n1_keywords, settings.n3_plus_keywords, settings.n3_keywords)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Setup fields contain unsupported control characters.")
+    if _private_local_mode_enabled() and (
+        any((settings.jira_base_url, settings.jira_email, settings.jira_api_token))
+        or knowledge_provider == "confluence"
+    ):
+        raise HTTPException(status_code=403, detail="External connections are disabled while PRIVATE_LOCAL_MODE is active.")
+
+    if settings.clear_runner_heartbeat_token and settings.runner_heartbeat_token.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Choose either a new runner credential or disconnect the current runner.",
+        )
+    heartbeat_config: RunnerHeartbeatConfig | None = None
+    if settings.runner_heartbeat_token.strip():
+        try:
+            heartbeat_config = RunnerHeartbeatConfig.from_values(
+                os.getenv("SUPPORT_CONTROL_PLANE_API_URL", ""),
+                os.getenv("SUPPORT_RUNNER_ID", ""),
+                settings.runner_heartbeat_token,
+                settings.runner_heartbeat_interval_seconds,
+            )
+        except RunnerHeartbeatConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif (
+        settings.runner_heartbeat_interval_seconds != _runner_heartbeat_interval_seconds()
+        and os.getenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", "").strip()
+    ):
+        try:
+            heartbeat_config = RunnerHeartbeatConfig.from_values(
+                os.getenv("SUPPORT_CONTROL_PLANE_API_URL", ""),
+                os.getenv("SUPPORT_RUNNER_ID", ""),
+                os.getenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", ""),
+                settings.runner_heartbeat_interval_seconds,
+            )
+        except RunnerHeartbeatConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    url = settings.jira_base_url.strip().rstrip("/")
+    email = settings.jira_email.strip()
+    desk = settings.jira_service_desk_id.strip()
+    queue = settings.jira_queue_id.strip()
+    token = settings.jira_api_token.strip() or os.getenv("JSM_API_TOKEN", "").strip()
+    jira_fields = (url, email, desk, queue)
+    queue_sample_count = 0
+    if any(jira_fields) or settings.jira_api_token.strip():
+        if not all(jira_fields) or not token:
+            raise HTTPException(status_code=422, detail="Enter the Jira site, account email, service desk ID, queue ID, and API token (or keep the saved token).")
+        candidate = JiraConfig(url, email, token, desk, queue)
+        try:
+            queue_sample_count = await create_itsm_adapter("jira-service-management", candidate).validate_connection()
+        except ITSMConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ITSMRequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Jira connection check failed: {exc}") from exc
+
+    knowledge_dir = settings.knowledge_dir.strip() if knowledge_provider == "local" else ""
+    if knowledge_provider == "local" and knowledge_dir:
+        candidate_path = Path(knowledge_dir).expanduser()
+        if not candidate_path.is_dir():
+            raise HTTPException(status_code=422, detail="Knowledge directory does not exist on this machine.")
+        previous_knowledge_dir = os.environ.get("KNOWLEDGE_DIR")
+        os.environ["KNOWLEDGE_DIR"] = str(candidate_path.resolve())
+        try:
+            knowledge_check = knowledge_status()
+        finally:
+            if previous_knowledge_dir is None:
+                os.environ.pop("KNOWLEDGE_DIR", None)
+            else:
+                os.environ["KNOWLEDGE_DIR"] = previous_knowledge_dir
+        if not knowledge_check.get("available"):
+            raise HTTPException(status_code=422, detail=str(knowledge_check.get("message") or "Knowledge source allowlist could not be verified."))
+
+    confluence_config: ConfluenceConfig | None = None
+    confluence_token = ""
+    confluence_consent = False
+    if knowledge_provider == "confluence":
+        try:
+            confluence_config = _confluence_setup_config(
+                settings.confluence_base_url,
+                settings.confluence_email,
+                settings.confluence_api_token,
+                settings.confluence_space_keys,
+            )
+        except ConfluenceConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        new_scope = confluence_config.consent_scope
+        prior_consent = (
+            _enabled_env("CONFLUENCE_TICKET_SEARCH_ALLOWED")
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip() == new_scope
+        )
+        confluence_consent = settings.confluence_ticket_search_allowed or prior_consent
+        if not confluence_consent:
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm that minimized ticket search terms will be sent to the selected Confluence site and spaces before saving.",
+            )
+        confluence_token = settings.confluence_api_token.strip()
+
+    env_values = {
+        "JSM_BASE_URL": url,
+        "JSM_USER_EMAIL": email,
+        "JSM_SERVICE_DESK_ID": desk,
+        "JSM_QUEUE_ID": queue,
+        "KNOWLEDGE_DIR": str(Path(knowledge_dir).expanduser().resolve()) if knowledge_dir else "",
+        "KNOWLEDGE_PROVIDER": knowledge_provider,
+        "CONFLUENCE_BASE_URL": confluence_config.normalized_base_url if confluence_config else "",
+        "CONFLUENCE_USER_EMAIL": confluence_config.email if confluence_config else "",
+        "CONFLUENCE_SPACE_KEYS": ",".join(confluence_config.normalized_space_keys) if confluence_config else "",
+        "CONFLUENCE_API_TOKEN_SCOPE": confluence_config.credential_scope if confluence_config else "",
+        "CONFLUENCE_TICKET_SEARCH_ALLOWED": str(confluence_consent).lower(),
+        "CONFLUENCE_SEARCH_CONSENT_SCOPE": confluence_config.consent_scope if confluence_config and confluence_consent else "",
+        "JSM_AUTO_TRIAGE_NEW_TICKETS": str(settings.auto_triage_new_tickets).lower(),
+        "JSM_POLL_INTERVAL_SECONDS": str(settings.poll_interval_seconds),
+        "JSM_AUTO_TRIAGE_MAX_PER_POLL": str(settings.max_auto_triage_per_poll),
+        "SUPPORT_N1_KEYWORDS": settings.n1_keywords.strip(),
+        "SUPPORT_N3_PLUS_KEYWORDS": settings.n3_plus_keywords.strip(),
+        "SUPPORT_N3_KEYWORDS": settings.n3_keywords.strip(),
+        "SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS": str(
+            settings.runner_heartbeat_interval_seconds
+        ),
+    }
+    env_values.update(model_env_values)
+    try:
+        async with SETUP_WRITE_LOCK:
+            _persist_local_setup(
+                env_values,
+                settings.jira_api_token.strip(),
+                remove_api_token=not any(jira_fields),
+                model_api_key=model_api_key,
+                remove_model_api_key=remove_model_api_key,
+                confluence_api_token=confluence_token,
+                remove_confluence_api_token=knowledge_provider != "confluence",
+                runner_heartbeat_token=settings.runner_heartbeat_token.strip(),
+                remove_runner_heartbeat_token=settings.clear_runner_heartbeat_token,
+            )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="Local setup could not be saved. Check that the project folder is writable.") from exc
+
+    if settings.clear_runner_heartbeat_token:
+        RUNNER_HEARTBEAT_STATE.update(initial_heartbeat_state())
+    elif settings.runner_heartbeat_token.strip() and heartbeat_config is not None:
+        await heartbeat_once(heartbeat_config, RUNNER_HEARTBEAT_STATE)
+
+    return {
+        "saved": True,
+        "jira_connected": bool(any(jira_fields) and token),
+        "jira_queue_sample_count": queue_sample_count,
+        "knowledge": knowledge_status(),
+        "confluence_connection": "configured_not_checked" if knowledge_provider == "confluence" else "not_selected",
+        "model_provider": model_env_values.get("MODEL_PROVIDER", ProviderConfig.from_env().provider),
+        "model_name": model_env_values.get("MODEL_NAME", ProviderConfig.from_env().model),
+        "runner_heartbeat": dict(RUNNER_HEARTBEAT_STATE),
+        "external_model_disclosure_accepted": model_env_values.get(
+            "ALLOW_EXTERNAL_TICKET_INFERENCE",
+            str(ProviderConfig.from_env().external_ticket_inference_allowed).lower(),
+        ) == "true",
+        "message": "Settings saved on this machine. Setup does not send a model request, and saved API keys are never returned to the browser.",
+    }
+
+
+@app.get("/api/integrations/status")
+async def integrations_status() -> dict[str, object]:
+    jira = JiraConfig.from_env()
+    private_mode = _private_local_mode_enabled()
+    adapter = (
+        create_itsm_adapter("jira-service-management", jira)
+        if jira.configured and not private_mode
+        else None
+    )
+    capabilities = sorted(adapter.capabilities) if adapter else []
+    return {
+        "private_local_mode": private_mode,
+        "itsm_provider": "demo" if private_mode else "jira-service-management" if jira.configured else "demo",
+        "jira_configured": jira.configured and not private_mode,
+        "itsm_capabilities": capabilities,
+        "jira_write_action": (
+            "public-comment-after-two-human-confirmations"
+            if "public_reply" in capabilities
+            else "not_configured"
+        ),
+        "github_configured": False,
+        "github_write_action": "not_implemented",
+        "external_ticket_inference_allowed": (
+            False
+            if private_mode
+            else ProviderConfig.from_env().external_ticket_inference_allowed
+        ),
+        "knowledge": knowledge_status(),
+        "jira_monitor": {
+            **JIRA_MONITOR_STATE,
+            "interval_seconds": _monitor_interval_seconds(),
+        },
+        "runner_heartbeat": dict(RUNNER_HEARTBEAT_STATE),
+    }
+
+
+@app.post("/api/itsm/sync", response_model=list[CaseRecord])
+async def sync_itsm_queue() -> list[CaseRecord]:
+    if _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Jira sync is disabled while PRIVATE_LOCAL_MODE is active.",
+        )
+    config = JiraConfig.from_env()
+    try:
+        async with JIRA_MONITOR_LOCK:
+            remote_cases = await create_itsm_adapter("jira-service-management", config).list_queue_cases()
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    for case in remote_cases:
+        CASES[case.id] = case.model_copy(
+            update={
+                "tags": sorted(set(case.tags) | JIRA_LOCAL_TAGS.get(case.id, set()))
+            }
+        )
+        _save_case(CASES[case.id])
+    return remote_cases
+
+
+@app.get("/api/cases", response_model=list[CaseRecord])
+async def list_cases() -> list[CaseRecord]:
+    return list(CASES.values())
+
+
+@app.get("/api/metrics", response_model=WorkspaceMetrics)
+async def workspace_metrics() -> WorkspaceMetrics:
+    runs = list(RUNS.values())
+    elapsed_seconds = [run.elapsed_ms / 1000 for run in runs]
+    return WorkspaceMetrics(
+        open_cases=sum(
+            case.status.strip().lower() not in {"closed", "resolved", "done"}
+            for case in CASES.values()
+        ),
+        total_cases=len(CASES),
+        workflow_runs=len(runs),
+        live_model_runs=sum(run.provider_mode == "live" for run in runs),
+        drafts_passing_gate=sum(run.score >= 9 for run in runs),
+        reviewer_approved_runs=sum(run.status == "approved" for run in runs),
+        reviewer_edited_runs=sum(run.human_edited for run in runs),
+        reviewer_rejected_runs=sum(run.status == "rejected" for run in runs),
+        public_replies_published=sum(run.ticket_comment_published for run in runs),
+        median_triage_seconds=(
+            round(float(median(elapsed_seconds)), 1) if elapsed_seconds else None
+        ),
+    )
+
+
+@app.get("/api/product-signals")
+async def product_signals() -> list[dict[str, object]]:
+    """Group repeated model-inferred triage categories for human product review."""
+    latest_runs: dict[str, WorkflowResult] = {}
+    for run in RUNS.values():
+        if run.status != "failed":
+            latest_runs[run.case_id] = run
+
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for case_id, run in latest_runs.items():
+        category = run.category.strip()
+        if category.lower() in {
+            "",
+            "needs triage",
+            "unknown",
+        }:
+            continue
+        case = CASES.get(case_id)
+        if case is None:
+            continue
+        grouped.setdefault(category, []).append(
+            {
+                "id": case.id,
+                "title": case.title,
+                "source": case.source,
+                "confidence": run.confidence,
+            }
+        )
+
+    return [
+        {
+            "category": category,
+            "cases": sorted(items, key=lambda item: str(item["id"])),
+        }
+        for category, items in sorted(
+            grouped.items(), key=lambda entry: (-len(entry[1]), entry[0].lower())
+        )
+        if len(items) >= 2
+    ]
+
+
+@app.post("/api/cases", response_model=CaseRecord, status_code=201)
+async def create_case(request: IntakeRequest) -> CaseRecord:
+    next_number = max(
+        (int(key[4:]) for key in CASES if key.startswith("LAB-") and key[4:].isdigit()),
+        default=0,
+    ) + 1
+    case_id = f"LAB-{next_number:04d}"
+    case = CaseRecord(
+        id=case_id,
+        title=request.title.strip(),
+        requester=request.requester.strip(),
+        channel="Local lab",
+        created_at=datetime.now(UTC).isoformat(timespec="minutes"),
+        priority="Untriaged",
+        category="Needs triage",
+        status="New",
+        body=request.body.strip(),
+        impact=request.impact.strip(),
+        tags=["synthetic-lab"],
+    )
+    CASES[case_id] = case
+    _save_case(case)
+    return case
+
+
+@app.post("/api/workflows", response_model=WorkflowResult, status_code=201)
+async def start_workflow(request: RunRequest) -> WorkflowResult:
+    async with _workflow_lock(request.case_id):
+        return await _start_workflow_locked(request)
+
+
+@app.post(
+    "/api/v1/workflows/{workflow_id}/runs",
+    response_model=WorkflowResult,
+    status_code=201,
+)
+async def start_published_workflow(
+    workflow_id: str, request: PublishedWorkflowRunRequest
+) -> WorkflowResult:
+    if request.include_model_council and _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Model council is disabled in PRIVATE_LOCAL_MODE.",
+        )
+    registry = configured_workflow_registry()
+    try:
+        published = registry.get_published(workflow_id, request.workflow_version)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if published is None:
+        raise HTTPException(status_code=404, detail="Published workflow version not found.")
+    if published.content_hash != request.workflow_content_hash:
+        raise HTTPException(status_code=409, detail="Published workflow hash changed; reload before running.")
+    try:
+        plan = compile_published_workflow(
+            published,
+            expected_version=request.workflow_version,
+            expected_content_hash=request.workflow_content_hash,
+            provider=ProviderConfig.from_env(),
+        )
+    except ExecutionPlanError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    run_request = RunRequest(
+        case_id=request.case_id,
+        candidate_count=request.candidate_count,
+        include_model_council=request.include_model_council,
+    )
+    async with _workflow_lock(request.case_id):
+        # Setup could have changed while waiting for another run on this case.
+        try:
+            current = compile_published_workflow(
+                published,
+                expected_version=request.workflow_version,
+                expected_content_hash=request.workflow_content_hash,
+                provider=ProviderConfig.from_env(),
+            )
+        except ExecutionPlanError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if current != plan:
+            raise HTTPException(status_code=409, detail="Workflow execution bindings changed; reload and validate again.")
+        store = STATE_STORE or configured_store()
+        lease_owner = uuid4().hex
+        request_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "candidate_count": request.candidate_count,
+                    "include_model_council": request.include_model_council,
+                    "bindings_fingerprint": plan.bindings_fingerprint,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        try:
+            claim = store.claim_published_run(
+                idempotency_key=request.idempotency_key,
+                proposed_run_id=f"RUN-{uuid4().hex[:8].upper()}",
+                case_id=request.case_id,
+                workflow_id=workflow_id,
+                workflow_version=request.workflow_version,
+                workflow_content_hash=request.workflow_content_hash,
+                request_fingerprint=request_fingerprint,
+                lease_owner=lease_owner,
+                now=datetime.now(UTC),
+                lease_seconds=3600,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if claim["state"] == "completed":
+            cached = RUNS.get(str(claim["run_id"])) or store.load_runs().get(str(claim["run_id"]))
+            if cached is None:
+                raise HTTPException(status_code=409, detail="The completed idempotent run is missing from local storage.")
             RUNS[cached.id] = cached
             return cached
         if claim["state"] == "in_progress":
