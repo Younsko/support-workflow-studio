@@ -1,6 +1,6 @@
 # Connector development guide
 
-This guide describes the current adapter boundary and the requirements for adding a connector. The repository currently ships one live ITSM connector: Jira Service Management Cloud. The visual workflow definition API is still local, and published definitions do not execute through adapters.
+This guide describes the current adapter boundary and the requirements for adding a connector. The repository currently ships one live ITSM connector: Jira Service Management Cloud. The visual workflow definition API is local. A fail-closed compiler connects only the exact linear starter topology to the existing ticket runtime; it does not yet dispatch arbitrary graphs or execute connector nodes as independent workers.
 
 ## Current contracts
 

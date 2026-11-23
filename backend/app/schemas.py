@@ -102,10 +102,22 @@ class WorkflowResult(BaseModel):
     ticket_comment_outcome: Literal["not_started", "published", "unknown", "failed"] = (
         "not_started"
     )
+    workflow_id: str | None = None
+    workflow_version: int | None = None
+    workflow_content_hash: str | None = None
+    workflow_node_ids: list[str] = Field(default_factory=list)
 
 
 class RunRequest(BaseModel):
     case_id: str
+    candidate_count: int = Field(default=2, ge=1, le=3)
+    include_model_council: bool = False
+
+
+class PublishedWorkflowRunRequest(BaseModel):
+    case_id: str = Field(min_length=1, max_length=100)
+    workflow_version: int = Field(ge=1)
+    workflow_content_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     candidate_count: int = Field(default=2, ge=1, le=3)
     include_model_council: bool = False
 

@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.workflow_api import WorkflowRegistry
 from app.workflow_definitions import WorkflowDefinition, WorkflowNode, validate_workflow
+from fastapi.testclient import TestClient
 
 
 def draft() -> WorkflowDefinition:
@@ -60,6 +59,10 @@ def test_publish_is_immutable_and_fork_creates_next_draft(tmp_path: Path) -> Non
     bundle = registry.get_bundle(definition.id)
 
     assert published.version == 1
+    restored = registry.get_published(definition.id, 1)
+    assert restored is not None
+    assert restored.content_hash == published.content_hash
+    assert restored.definition().status == "published"
     assert bundle is not None
     assert bundle["draft"] is None
     assert len(bundle["published"]) == 1
@@ -133,7 +136,7 @@ def test_local_workflow_http_api_saves_validates_and_publishes(
         )
         assert published.status_code == 200
         assert published.json()["definition"]["status"] == "published"
-        assert published.json()["execution"] == "not_connected"
+        assert published.json()["execution"] == "requires_runtime_compile"
 
         bundle = client.get("/api/v1/workflows/flow-support-intake")
         assert bundle.status_code == 200

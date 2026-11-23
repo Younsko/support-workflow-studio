@@ -26,6 +26,7 @@ type Run = {
   category: string; urgency: string; support_level: string; support_route_reason: string; confidence: number; evidence: { id: string; title: string; excerpt: string; category?: string; source_version?: string; last_modified?: string; space_key?: string }[]
   plan: string[]; plan_reviews: PlanReview[]; draft: string; verifier_findings: string[]; reviewer_findings: Finding[]; work_lanes: WorkLane[]; council_options: CouncilOption[]; stages: Stage[]; human_decision?: string | null
   ticket_comment_published: boolean; ticket_comment_id?: string | null; ticket_comment_outcome: string
+  workflow_id?: string | null; workflow_version?: number | null; workflow_content_hash?: string | null; workflow_node_ids?: string[]
 }
 type RunAuditEvent = {
   sequence: number; event_id: string; run_id: string; case_id: string
@@ -170,6 +171,28 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
     finally { setRunning(false) }
   }
 
+  async function startPublishedWorkflow(workflowId: string, version: number, contentHash: string) {
+    if (!selected) return
+    setRunning(true); setError('')
+    try {
+      const result = await api<Run>(`/v1/workflows/${encodeURIComponent(workflowId)}/runs`, {
+        method: 'POST',
+        body: JSON.stringify({
+          case_id: selected.id,
+          workflow_version: version,
+          workflow_content_hash: contentHash,
+          candidate_count: candidateCount,
+          include_model_council: councilEnabled,
+        }),
+      })
+      setRun(result); setDraft(result.draft); setActiveSection('inbox')
+      setRunAuditRefresh((value) => value + 1)
+      void refreshMetrics()
+      void refreshProductSignals()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Published workflow could not start') }
+    finally { setRunning(false) }
+  }
+
   async function submitDecision(decision: 'approve' | 'edit' | 'reject') {
     if (!run) return
     setDecisionBusy(true); setError('')
@@ -278,7 +301,7 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
           <div className="topbar-right">{integrations?.private_local_mode && <span className="provider-pill live"><span className="status-dot" />{tr('PRIVATE LOCAL MODE')}</span>}<span className={`provider-pill ${health?.provider_mode === 'live' ? 'live' : ''}`}><span className="status-dot" />{health?.provider_mode === 'live' ? `${health.provider} · ${health.model}` : tr('Demo mode')}</span>{integrations?.jira_configured && <><span className={`provider-pill ${integrations.jira_monitor.enabled ? 'live' : ''}`}><span className="status-dot" />{integrations.jira_monitor.enabled ? `${tr('Jira monitor')} · ${integrations.jira_monitor.auto_triage_enabled ? tr('auto-triage on') : tr('review to triage')}` : tr('Jira monitor starting')}</span><span className={`provider-pill ${integrations.knowledge.configured && integrations.knowledge.available ? 'live' : ''}`}><span className="status-dot" />{integrations.knowledge.configured && integrations.knowledge.available ? integrations.knowledge.mode === 'confluence' ? tr('Confluence knowledge ready') : `${integrations.knowledge.source_count} ${tr('local KB sources')}` : tr('Knowledge setup required')}</span></>}<button className="language-switch" type="button" onClick={() => setLocale((current) => current === 'en' ? 'fr' : 'en')} aria-label={locale === 'en' ? 'Switch language to French' : 'Changer la langue en anglais'} title={locale === 'en' ? 'Change language' : 'Changer de langue'}><Languages size={15} /><span>{locale.toUpperCase()}</span></button><button className="icon-button" title={tr('Help')} aria-label={tr('Help')}><CircleHelp size={18} /></button><div className="top-avatar">SR</div></div>
         </header>}
 
-        {activeSection === 'workflow' && <div id="workflow-studio" className="workflow-studio-page"><WorkflowBuilder locale={locale} onLocaleChange={setLocale} onOpenConnections={() => setShowSetup(true)} connectionsRevision={setupRevision} /></div>}
+        {activeSection === 'workflow' && <div id="workflow-studio" className="workflow-studio-page"><WorkflowBuilder locale={locale} onLocaleChange={setLocale} onOpenConnections={() => setShowSetup(true)} onRunPublishedWorkflow={startPublishedWorkflow} onOpenRuns={() => setActiveSection('inbox')} canRunPublishedWorkflow={Boolean(selected && integrations?.jira_configured && integrations.knowledge.available && health && (health.provider_mode === 'demo' || health.credentials_configured))} runningPublishedWorkflow={running} executionError={error} connectionsRevision={setupRevision} /></div>}
 
         <div className="content-wrap" style={activeSection === 'workflow' ? { display: 'none' } : undefined}>
           <section className="page-heading">
