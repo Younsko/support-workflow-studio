@@ -151,9 +151,13 @@ def _save_case(case: CaseRecord) -> None:
         STATE_STORE.save_case(case)
 
 
-def _save_run(run: WorkflowResult) -> None:
+def _save_run(
+    run: WorkflowResult,
+    *,
+    audit_event: tuple[str, str, str, dict[str, object]] | None = None,
+) -> None:
     if STATE_STORE is not None:
-        STATE_STORE.save_run(run)
+        STATE_STORE.save_run(run, audit_event=audit_event)
 
 
 def _enabled_env(name: str) -> bool:
@@ -1208,7 +1212,15 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     RUNS[result.id] = result
-    _save_run(result)
+    _save_run(
+        result,
+        audit_event=(
+            result.id,
+            result.case_id,
+            "workflow.started",
+            {"to_status": result.status, "score": result.score},
+        ),
+    )
     if case.source == "jira-service-management":
         for tag in (
             "studio-triage-paused-knowledge",
@@ -1282,25 +1294,50 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
         )
     # An interrupted request is ambiguous. Keep this run closed to retries.
     result.ticket_comment_outcome = "unknown"
-    _save_run(result)
+    _save_run(
+        result,
+        audit_event=(
+            result.id,
+            result.case_id,
+            "publish.attempted",
+            {
+                "from_status": result.status,
+                "to_status": result.status,
+                "decision_version": result.approval_version,
+                "outcome": "unknown",
+            },
+        ),
+    )
     try:
         posted = await create_itsm_adapter("jira-service-management").publish_public_reply(case.external_key, result.draft)
     except ITSMConfigurationError as exc:
         result.ticket_comment_outcome = "failed"
-        _save_run(result)
+        _save_run(
+            result,
+            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
-        _save_run(result)
+        _save_run(
+            result,
+            audit_event=(result.id, result.case_id, "publish.unknown", {"outcome": "unknown"}),
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ITSMRequestError as exc:
         result.ticket_comment_outcome = "failed"
-        _save_run(result)
+        _save_run(
+            result,
+            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     result.ticket_comment_published = True
     result.ticket_comment_id = posted.get("id")
     result.ticket_comment_outcome = "published"
-    _save_run(result)
+    _save_run(
+        result,
+        audit_event=(result.id, result.case_id, "publish.succeeded", {"outcome": "published"}),
+    )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
 
 
@@ -1313,6 +1350,16 @@ async def latest_workflow(case_id: str) -> WorkflowResult:
     if result is None:
         raise HTTPException(status_code=404, detail="No workflow run for this case")
     return result
+
+
+@app.get("/api/workflows/{run_id}/events")
+async def workflow_run_events(run_id: str) -> list[dict[str, object]]:
+    """Read metadata-only local audit events; no ticket or draft text is returned."""
+    if run_id not in RUNS:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    if STATE_STORE is None:
+        return []
+    return STATE_STORE.list_run_events(run_id)
 
 
 @app.post("/api/workflows/{run_id}/decision", response_model=WorkflowResult)
@@ -1456,7 +1503,25 @@ async def _decide_locked(
         if decision_stage is not None:
             decision_stage.status = "complete" if request.decision == "approve" else "warning"
             decision_stage.detail = f"{result.human_decision}. No external action was taken."
-    _save_run(result)
+    event_type = {
+        "approve": "decision.approved",
+        "reject": "decision.rejected",
+        "edit": "draft.edited",
+    }[request.decision]
+    _save_run(
+        result,
+        audit_event=(
+            result.id,
+            result.case_id,
+            event_type,
+            {
+                "from_status": "awaiting_human",
+                "to_status": result.status,
+                "decision_version": result.approval_version,
+                "score": result.score,
+            },
+        ),
+    )
     return result
 
 

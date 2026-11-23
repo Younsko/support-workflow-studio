@@ -321,7 +321,7 @@ def test_jira_connector_rejects_untrusted_hosts_and_plain_http() -> None:
             config.validate()
 
 
-def test_ticket_comment_requires_two_separate_human_actions(monkeypatch) -> None:
+def test_ticket_comment_requires_two_separate_human_actions(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("MODEL_PROVIDER", "demo")
     configure_test_knowledge(monkeypatch)
     monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
@@ -360,8 +360,10 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch) -> None
             return {"id": "synthetic-comment-1", "public": "True"}
 
     from app import main
+    from app.store import LocalStore
 
     monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
+    monkeypatch.setattr(main, "STATE_STORE", LocalStore(tmp_path / "state.sqlite3"))
     run = client.post(
         "/api/workflows", json={"case_id": "DEMO-81", "candidate_count": 1}
     ).json()
@@ -389,6 +391,15 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch) -> None
     assert sent.status_code == 200
     assert sent.json()["public"] is True
     assert published and published[0][0] == "DEMO-81"
+    events = client.get(f"/api/workflows/{run['id']}/events").json()
+    assert [event["event_type"] for event in events] == [
+        "workflow.started",
+        "decision.approved",
+        "publish.attempted",
+        "publish.succeeded",
+    ]
+    assert events[2]["outcome"] == "unknown"
+    assert events[3]["outcome"] == "published"
 
 
 def test_jira_queue_read_maps_only_bounded_queue_fields(monkeypatch) -> None:
@@ -764,7 +775,7 @@ def test_jira_inference_fails_closed_when_scoped_key_is_missing(monkeypatch) -> 
     assert "stale-synthetic-key" not in response.text
 
 
-def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch) -> None:
+def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("MODEL_PROVIDER", "demo")
     configure_test_knowledge(monkeypatch)
     monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
@@ -804,8 +815,10 @@ def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch) -> Non
             )
 
     from app import main
+    from app.store import LocalStore
 
     monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
+    monkeypatch.setattr(main, "STATE_STORE", LocalStore(tmp_path / "state.sqlite3"))
     run = client.post(
         "/api/workflows", json={"case_id": "DEMO-83", "candidate_count": 1}
     ).json()
@@ -819,6 +832,11 @@ def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch) -> Non
     assert first_attempt.status_code == 502
     assert second_attempt.status_code == 409
     assert call_count == 1
+    events = client.get(f"/api/workflows/{run['id']}/events").json()
+    assert [event["event_type"] for event in events][-2:] == [
+        "publish.attempted",
+        "publish.unknown",
+    ]
 
 
 def test_jira_setup_discovers_workspaces_without_persisting_credentials(monkeypatch) -> None:
