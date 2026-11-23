@@ -1094,7 +1094,13 @@ def test_itsm_factory_exposes_only_implemented_provider_capabilities() -> None:
     )
     assert adapter.provider_id == "jira-service-management"
     assert adapter.capabilities == frozenset(
-        {"queue_read", "request_refresh", "public_reply"}
+        {
+            "workspace_discovery",
+            "queue_discovery",
+            "queue_read",
+            "request_refresh",
+            "public_reply",
+        }
     )
 
     with pytest.raises(JiraConfigurationError, match="not implemented"):

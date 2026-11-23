@@ -4,14 +4,14 @@ Support Workflow Studio treats an ITSM system as a source of support requests an
 
 ## Connector contract
 
-`backend/app/itsm.py` defines the `ITSMAdapter` protocol, and the app routes use it for queue reads, request refreshes, connection checks, and public replies. An adapter owns provider-specific configuration and API details. It implements:
+`backend/app/connector_sdk.py` defines the versioned `ITSMAdapter` protocol, and the app routes use it for queue reads, request refreshes, connection checks, and public replies. An adapter owns provider-specific configuration and API details. It implements:
 
 - `validate_connection` — confirm credentials and access without changing a ticket.
 - `list_queue_cases` — return a bounded page of normalized open requests.
 - `get_request_details` — refresh the exact source ticket before any write.
 - `publish_public_reply` — post only the already human-approved response and report a confirmed comment ID or an unknown outcome.
 
-`JiraServiceManagementAdapter` is the only implementation currently registered by `create_itsm_adapter`. That factory rejects every unimplemented provider ID. The adapter advertises `queue_read`, `request_refresh` and `public_reply`; the integration-status endpoint reports these capabilities only when Jira is configured and external ITSM use is enabled.
+`JiraServiceManagementAdapter` is the only ITSM implementation currently registered with `ITSMConnectorRegistry`. `create_itsm_adapter()` delegates to that explicit registry and rejects every unimplemented provider ID. Jira advertises `workspace_discovery`, `queue_discovery`, `queue_read`, `request_refresh` and `public_reply`; the integration-status endpoint reports these capabilities only when Jira is configured and external ITSM use is enabled. Connector implementations are trusted in-process code; the application does not load tenant-selected plugins.
 
 Each adapter must validate HTTPS endpoints and resource identifiers, set request timeouts, bound pagination and response sizes, treat requester content as untrusted, and avoid logging credentials or ticket bodies. Jira reads retry HTTP 429 responses at most twice only when `Retry-After` is valid and the requested wait is no more than five seconds; longer or missing retry instructions are returned to the caller without an early retry, following Atlassian's [Jira Cloud rate-limit guidance](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/). Writes are never automatically retried: a timed-out or ambiguous write must raise the shared `ITSMOutcomeUnknown` error and be checked in the ITSM before any retry. Connection and read errors should use `ITSMConfigurationError` or `ITSMRequestError` so the common API layer can handle provider failures consistently.
 

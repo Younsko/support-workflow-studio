@@ -6,11 +6,15 @@ import random
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Protocol
 from urllib.parse import urlparse
 
 import httpx
 
+from .connector_sdk import (
+    ConnectorRegistrationError,
+    ITSMAdapter,
+    ITSMConnectorRegistry,
+)
 from .schemas import CaseRecord
 from .ticket_snapshot import jira_ticket_fingerprint
 
@@ -473,38 +477,21 @@ async def create_public_comment(
     return {"id": str(payload["id"]), "public": "True"}
 
 
-class ITSMAdapter(Protocol):
-    """Provider contract consumed by the support workflow.
-
-    Implementations must keep reads bounded, refresh the exact request before a
-    write, and return a confirmed public-comment ID. Unknown write outcomes must
-    raise :class:`ITSMOutcomeUnknown` so callers never retry a possibly
-    accepted write blindly.
-    """
-
-    provider_id: str
-    capabilities: frozenset[str]
-
-    async def list_workspaces(self) -> list[dict[str, str]]: ...
-
-    async def list_queues(self, workspace_id: str) -> list[dict[str, str]]: ...
-
-    async def validate_connection(self) -> int: ...
-
-    async def list_queue_cases(self, limit: int = 50, start: int = 0) -> list[CaseRecord]: ...
-
-    async def get_request_details(self, issue_key: str) -> dict[str, object]: ...
-
-    async def publish_public_reply(self, issue_key: str, body: str) -> dict[str, str]: ...
-
-
 @dataclass(frozen=True)
 class JiraServiceManagementAdapter:
     """Jira Cloud implementation of the normalized :class:`ITSMAdapter`."""
 
     config: JiraConfig
     provider_id = "jira-service-management"
-    capabilities = frozenset({"queue_read", "request_refresh", "public_reply"})
+    capabilities = frozenset(
+        {
+            "workspace_discovery",
+            "queue_discovery",
+            "queue_read",
+            "request_refresh",
+            "public_reply",
+        }
+    )
 
     async def list_workspaces(self) -> list[dict[str, str]]:
         return await list_service_desks(self.config)
@@ -526,10 +513,28 @@ class JiraServiceManagementAdapter:
         return await create_public_comment(self.config, issue_key, body)
 
 
+ITSM_CONNECTORS = ITSMConnectorRegistry()
+
+
+def _create_jira_adapter(configuration: object | None) -> ITSMAdapter:
+    if configuration is None:
+        return JiraServiceManagementAdapter(JiraConfig.from_env())
+    if not isinstance(configuration, JiraConfig):
+        raise JiraConfigurationError("Jira connector configuration has an unsupported type.")
+    return JiraServiceManagementAdapter(configuration)
+
+
+ITSM_CONNECTORS.register(
+    JiraServiceManagementAdapter.provider_id,
+    _create_jira_adapter,
+)
+
+
 def create_itsm_adapter(
     provider_id: str, config: JiraConfig | None = None
 ) -> ITSMAdapter:
-    """Construct an implemented provider; unsupported providers fail closed."""
-    if provider_id == JiraServiceManagementAdapter.provider_id:
-        return JiraServiceManagementAdapter(config or JiraConfig.from_env())
-    raise JiraConfigurationError(f"ITSM provider is not implemented: {provider_id}")
+    """Construct a registered, contract-checked provider; unknown names fail closed."""
+    try:
+        return ITSM_CONNECTORS.create(provider_id, config)
+    except ConnectorRegistrationError as exc:
+        raise JiraConfigurationError(str(exc)) from exc

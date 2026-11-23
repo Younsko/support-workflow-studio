@@ -152,6 +152,9 @@ def _plain_text(value: str) -> str:
 class ConfluenceAdapter:
     """A read-only Cloud client that never follows provider-supplied URLs."""
 
+    provider_id = "confluence-cloud"
+    capabilities = frozenset({"connection_check", "search", "versioned_evidence"})
+
     def __init__(self, config: ConfluenceConfig, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         config.validate()
         self.config = config
