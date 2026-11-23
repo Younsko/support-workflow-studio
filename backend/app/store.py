@@ -28,6 +28,7 @@ RunEventType = Literal[
 ]
 RunStatus = Literal["awaiting_human", "approved", "edited", "rejected", "failed"]
 PublishOutcome = Literal["not_started", "published", "unknown", "failed"]
+AuditActorRole = Literal["Owner", "Admin", "Builder", "Operator", "Approver", "Viewer"]
 
 
 class RunEventInput(BaseModel):
@@ -40,6 +41,8 @@ class RunEventInput(BaseModel):
     decision_version: int | None = Field(default=None, ge=0)
     score: float | None = Field(default=None, ge=0, le=10)
     outcome: PublishOutcome | None = None
+    actor_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    actor_role: AuditActorRole | None = None
 
 
 class RunAuditEvent(BaseModel):
@@ -58,10 +61,13 @@ class RunAuditEvent(BaseModel):
     decision_version: int | None = None
     score: float | None = None
     outcome: PublishOutcome | None = None
+    actor_id: str | None = None
+    actor_role: AuditActorRole | None = None
 
 
 _SAFE_CASE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_SAFE_CONTROL_PLANE_ID = re.compile(r"^[a-f0-9]{32}$")
 
 
 @runtime_checkable
@@ -69,10 +75,12 @@ class WorkflowStateStore(Protocol):
     """Persistence contract consumed by the local workflow runtime.
 
     Implementations must make each method's documented state transition
-    durable before returning. SQLite is the only implementation today.
+    durable before returning. LocalStore is the default; PostgresStore is an
+    opt-in customer-runner backend selected with SUPPORT_WORKFLOW_DATABASE_URL.
     """
 
     def check_ready(self) -> None: ...
+    def bind_runner_identity(self, workspace_id: str, runner_id: str) -> None: ...
     def load_cases(self) -> dict[str, CaseRecord]: ...
     def load_runs(self) -> dict[str, WorkflowResult]: ...
     def save_case(self, case: CaseRecord) -> None: ...
@@ -146,6 +154,13 @@ class LocalStore:
                 "CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
             connection.execute(
+                """CREATE TABLE IF NOT EXISTS runner_identity (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    workspace_id TEXT NOT NULL,
+                    runner_id TEXT NOT NULL
+                )"""
+            )
+            connection.execute(
                 "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
             connection.execute(
@@ -191,9 +206,18 @@ class LocalStore:
                     to_status TEXT,
                     decision_version INTEGER,
                     score REAL,
-                    outcome TEXT
+                    outcome TEXT,
+                    actor_id TEXT,
+                    actor_role TEXT
                 )"""
             )
+            run_event_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(run_events)")
+            }
+            if "actor_id" not in run_event_columns:
+                connection.execute("ALTER TABLE run_events ADD COLUMN actor_id TEXT")
+            if "actor_role" not in run_event_columns:
+                connection.execute("ALTER TABLE run_events ADD COLUMN actor_role TEXT")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS run_events_by_run_sequence "
                 "ON run_events(run_id, sequence)"
@@ -234,6 +258,30 @@ class LocalStore:
         """Confirm the local state database can accept a lightweight read."""
         with closing(self._connect()) as connection:
             connection.execute("SELECT 1").fetchone()
+
+    def bind_runner_identity(self, workspace_id: str, runner_id: str) -> None:
+        """Bind this dedicated state database to exactly one control-plane runner."""
+        if not _SAFE_CONTROL_PLANE_ID.fullmatch(workspace_id) or not _SAFE_CONTROL_PLANE_ID.fullmatch(runner_id):
+            raise ValueError("Workspace and runner IDs must be control-plane resource IDs.")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                "SELECT workspace_id, runner_id FROM runner_identity WHERE singleton = 1"
+            ).fetchone()
+            if current is None:
+                connection.execute(
+                    "INSERT INTO runner_identity(singleton, workspace_id, runner_id) VALUES (1, ?, ?)",
+                    (workspace_id, runner_id),
+                )
+            elif current["workspace_id"] != workspace_id or current["runner_id"] != runner_id:
+                raise RuntimeError("State database is already bound to another workspace runner.")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def load_cases(self) -> dict[str, CaseRecord]:
         with closing(self._connect()) as connection:
@@ -474,8 +522,8 @@ class LocalStore:
         connection.execute(
             """INSERT INTO run_events(
                 event_id, run_id, case_id, event_type, occurred_at,
-                from_status, to_status, decision_version, score, outcome
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                from_status, to_status, decision_version, score, outcome, actor_id, actor_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 event_id,
                 run_id,
@@ -487,6 +535,8 @@ class LocalStore:
                 metadata.decision_version,
                 metadata.score,
                 metadata.outcome,
+                metadata.actor_id,
+                metadata.actor_role,
             ),
         )
         sequence = connection.execute(
@@ -558,7 +608,7 @@ class LocalStore:
             event_rows = connection.execute(
                 f"""SELECT e.sequence, e.event_id, e.run_id, e.case_id, e.event_type,
                           e.occurred_at, e.from_status, e.to_status, e.decision_version,
-                          e.score, e.outcome, o.attempts
+                          e.score, e.outcome, e.actor_id, e.actor_role, o.attempts
                    FROM run_events e JOIN run_event_outbox o USING(event_id)
                    WHERE e.event_id IN ({placeholders}) ORDER BY e.sequence""",
                 event_ids,
@@ -664,7 +714,7 @@ class LocalStore:
             rows = connection.execute(
                 """SELECT sequence, event_id, run_id, case_id, event_type,
                           occurred_at, from_status, to_status,
-                          decision_version, score, outcome
+                          decision_version, score, outcome, actor_id, actor_role
                    FROM run_events WHERE run_id = ? ORDER BY sequence""",
                 (run_id,),
             ).fetchall()
@@ -706,4 +756,13 @@ def configured_store_path() -> Path:
 
 
 def configured_store() -> WorkflowStateStore:
+    postgres_url = os.getenv("SUPPORT_WORKFLOW_DATABASE_URL", "").strip()
+    if postgres_url:
+        if os.getenv("PRIVATE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}:
+            raise RuntimeError(
+                "PRIVATE_LOCAL_MODE refuses Postgres storage because the database host cannot be verified as local."
+            )
+        from .postgres_store import PostgresStore
+
+        return PostgresStore(postgres_url)
     return LocalStore(configured_store_path())

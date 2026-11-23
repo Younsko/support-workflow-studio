@@ -16,6 +16,7 @@ from statistics import median
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+import httpx
 from dotenv import load_dotenv, set_key, unset_key
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -30,6 +31,7 @@ from .confluence import (
     ConfluenceConfigurationError,
     ConfluenceRequestError,
 )
+from .control_plane.session_tokens import SessionTokenInvalid
 from .execution_plan import (
     ExecutionPlan,
     ExecutionPlanError,
@@ -49,6 +51,13 @@ from .knowledge import (
     knowledge_status,
 )
 from .providers import ProviderConfig, ProviderError, model_destination_scope
+from .runner_auth import (
+    RunnerAuthConfig,
+    RunnerAuthConfigurationError,
+    authenticate_bearer,
+    required_roles,
+)
+from .runner_identity import RunnerIdentity
 from .schemas import (
     CaseRecord,
     DecisionRequest,
@@ -65,7 +74,13 @@ from .workflow_api import configured_workflow_registry
 from .workflow_api import router as workflow_definitions_router
 from .workflow_definitions import PublishedWorkflow
 
-load_dotenv()
+
+def _configured_env_path() -> Path:
+    default_path = Path(__file__).resolve().parents[2] / ".env"
+    return Path(os.getenv("SUPPORT_WORKFLOW_ENV_PATH", str(default_path))).expanduser()
+
+
+load_dotenv(_configured_env_path())
 
 
 class SetupRequest(BaseModel):
@@ -145,7 +160,7 @@ def _persist_local_setup(
     remove_confluence_api_token: bool = False,
 ) -> None:
     """Atomically update ignored local configuration, then apply it in-process."""
-    env_path = Path(__file__).resolve().parents[2] / ".env"
+    env_path = _configured_env_path()
     env_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         prefix=".env.", suffix=".tmp", dir=env_path.parent, delete=False
@@ -633,30 +648,50 @@ async def _jira_monitor_loop() -> None:
 async def lifespan(_: FastAPI):
     global STATE_STORE
     _validate_private_local_mode()
-    STATE_STORE = configured_store()
-    CASES.update(STATE_STORE.load_cases())
-    RUNS.update(STATE_STORE.load_runs())
-    _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
-    monitor = asyncio.create_task(_jira_monitor_loop())
+    RunnerAuthConfig.from_env()
+    monitor: asyncio.Task[None] | None = None
     try:
+        STATE_STORE = configured_store()
+        runner_identity = RunnerIdentity.from_env()
+        if runner_identity is not None:
+            STATE_STORE.bind_runner_identity(
+                runner_identity.workspace_id, runner_identity.runner_id
+            )
+            configured_workflow_registry().bind_runner_identity(
+                runner_identity.workspace_id, runner_identity.runner_id
+            )
+        CASES.update(STATE_STORE.load_cases())
+        RUNS.update(STATE_STORE.load_runs())
+        _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
+        monitor = asyncio.create_task(_jira_monitor_loop())
         yield
     finally:
-        monitor.cancel()
-        try:
-            await monitor
-        except asyncio.CancelledError:
-            pass
+        if monitor is not None:
+            monitor.cancel()
+            try:
+                await monitor
+            except asyncio.CancelledError:
+                pass
         STATE_STORE = None
 
 
 app = FastAPI(title="Support Workflow Studio", version="0.1.0", lifespan=lifespan)
 app.include_router(workflow_definitions_router)
+_runner_browser_origins = [
+    origin.strip()
+    for origin in os.getenv("SUPPORT_RUNNER_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        *_runner_browser_origins,
+    ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 
 
@@ -685,11 +720,97 @@ async def safe_validation_error(
 
 @app.middleware("http")
 async def require_local_client(request: Request, call_next) -> Response:
-    """This unauthenticated prototype must only accept loopback connections."""
+    """Keep loopback-only defaults; require workspace sessions for remote mode."""
     host = request.client.host if request.client else ""
+    allowed_hostnames = {"localhost", "127.0.0.1", "::1"}
+    try:
+        auth_config = RunnerAuthConfig.from_env()
+    except RunnerAuthConfigurationError:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Runner session verification is unavailable."},
+        )
+    if auth_config is not None:
+        hostname = (request.url.hostname or "").casefold()
+        if hostname not in allowed_hostnames | auth_config.allowed_hosts:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "The request hostname is not configured for this runner."},
+            )
+        origin = request.headers.get("origin")
+        if origin:
+            parsed_origin = urlsplit(origin)
+            normalized_origin = f"{parsed_origin.scheme}://{parsed_origin.netloc}".casefold()
+            same_origin = normalized_origin == (
+                f"{request.url.scheme}://{request.url.netloc}"
+            ).casefold()
+            valid_origin = (
+                bool(parsed_origin.hostname)
+                and parsed_origin.scheme in {"http", "https"}
+                and not parsed_origin.username
+                and not parsed_origin.password
+                and parsed_origin.path in {"", "/"}
+                and not parsed_origin.query
+                and not parsed_origin.fragment
+            )
+            if not valid_origin or (
+                not same_origin and normalized_origin not in auth_config.allowed_origins
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "The browser origin is not configured for this runner."},
+                )
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        remote_client = host != "testclient" and (
+            address is None or not address.is_loopback
+        )
+        if (
+            remote_client
+            and request.url.scheme != "https"
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Remote runner requests require HTTPS."},
+            )
+        if request.method == "GET" and request.url.path == "/api/auth/config":
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if request.url.path.startswith("/api/"):
+            try:
+                claims = authenticate_bearer(
+                    request.headers.get("authorization"), config=auth_config
+                )
+            except SessionTokenInvalid:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid workspace runner session is required."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            except (RunnerAuthConfigurationError, RuntimeError):
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Runner session verification is unavailable."},
+                )
+            allowed_roles = required_roles(request.method, request.url.path)
+            if allowed_roles is None or claims["role"] not in allowed_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "The workspace role cannot perform this action."},
+                )
+            request.state.support_actor = {
+                "workspace_id": auth_config.identity.workspace_id,
+                "runner_id": auth_config.identity.runner_id,
+                "actor_id": auth_config.actor_id(claims["sub"]),
+                "role": claims["role"],
+            }
+        return await call_next(request)
+
     if host == "testclient":
         return await call_next(request)
-    allowed_hostnames = {"localhost", "127.0.0.1", "::1"}
     if request.url.hostname not in allowed_hostnames:
         return JSONResponse(
             status_code=403,
@@ -724,7 +845,14 @@ async def require_local_client(request: Request, call_next) -> Response:
         address = ipaddress.ip_address(host)
     except ValueError:
         address = None
-    if address is None or not address.is_loopback:
+    trusted_local_client = None
+    configured_trusted_client = os.getenv("SUPPORT_TRUSTED_LOCAL_CLIENT_IP", "").strip()
+    if configured_trusted_client:
+        try:
+            trusted_local_client = ipaddress.ip_address(configured_trusted_client)
+        except ValueError:
+            trusted_local_client = None
+    if address is None or (not address.is_loopback and address != trusted_local_client):
         return JSONResponse(
             status_code=403,
             content={"detail": "This prototype only accepts local connections."},
@@ -732,10 +860,50 @@ async def require_local_client(request: Request, call_next) -> Response:
     return await call_next(request)
 
 
+@app.middleware("http")
+async def secure_browser_response(request: Request, call_next) -> Response:
+    """Protect the browser token surface and avoid caching support app HTML."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self' https:; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self' data:; "
+        "connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:*",
+    )
+    if request.url.path in {"/", "/index.html", "/api/auth/config"}:
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 CASES: dict[str, CaseRecord] = {case.id: case for case in demo_cases()}
 RUNS: dict[str, WorkflowResult] = {}
 PUBLISH_LOCKS: dict[str, asyncio.Lock] = {}
 DECISION_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+@app.get("/api/auth/config")
+async def support_auth_config() -> dict[str, object]:
+    try:
+        auth_config = RunnerAuthConfig.from_env()
+    except RunnerAuthConfigurationError as exc:
+        raise HTTPException(
+            status_code=503, detail="Runner authentication is not configured safely."
+        ) from exc
+    if auth_config is None:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "workspace_id": auth_config.identity.workspace_id,
+        "runner_id": auth_config.identity.runner_id,
+        "control_plane_api_url": auth_config.control_plane_api_url,
+    }
 
 
 @app.get("/api/health")
@@ -1633,7 +1801,7 @@ async def _start_workflow_locked(
 
 
 @app.post("/api/workflows/{run_id}/publish-ticket-reply")
-async def publish_ticket_reply(run_id: str) -> dict[str, object]:
+async def publish_ticket_reply(run_id: str, request: Request) -> dict[str, object]:
     if _private_local_mode_enabled():
         raise HTTPException(
             status_code=403,
@@ -1641,10 +1809,33 @@ async def publish_ticket_reply(run_id: str) -> dict[str, object]:
         )
     lock = PUBLISH_LOCKS.setdefault(run_id, asyncio.Lock())
     async with lock:
-        return await _publish_ticket_reply_locked(run_id)
+        auth_config = RunnerAuthConfig.from_env()
+        return await _publish_ticket_reply_locked(
+            run_id,
+            actor_metadata=_audit_actor_metadata(request),
+            runner_auth_config=auth_config,
+            runner_session_token=(
+                request.headers.get("authorization", "").partition(" ")[2].strip()
+                if auth_config is not None
+                else None
+            ),
+        )
 
 
-async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
+def _audit_actor_metadata(request: Request) -> dict[str, object]:
+    actor = getattr(request.state, "support_actor", None)
+    if not isinstance(actor, dict):
+        return {}
+    return {"actor_id": actor["actor_id"], "actor_role": actor["role"]}
+
+
+async def _publish_ticket_reply_locked(
+    run_id: str,
+    *,
+    actor_metadata: dict[str, object] | None = None,
+    runner_auth_config: RunnerAuthConfig | None = None,
+    runner_session_token: str | None = None,
+) -> dict[str, object]:
     result = RUNS.get(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Workflow run not found")
@@ -1684,6 +1875,11 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
             status_code=409,
             detail="The Jira request changed after this workflow reviewed it. Sync and rerun triage, then approve the new draft before publishing.",
         )
+    if runner_auth_config is not None:
+        current_role = await _recheck_external_write_authorization(
+            runner_auth_config, runner_session_token
+        )
+        actor_metadata = {**(actor_metadata or {}), "actor_role": current_role}
     # An interrupted request is ambiguous. Keep this run closed to retries.
     result.ticket_comment_outcome = "unknown"
     _save_run(
@@ -1697,6 +1893,7 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
                 "to_status": result.status,
                 "decision_version": result.approval_version,
                 "outcome": "unknown",
+                **(actor_metadata or {}),
             },
         ),
     )
@@ -1706,21 +1903,36 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
         result.ticket_comment_outcome = "failed"
         _save_run(
             result,
-            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.failed",
+                {"outcome": "failed", **(actor_metadata or {})},
+            ),
         )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
         _save_run(
             result,
-            audit_event=(result.id, result.case_id, "publish.unknown", {"outcome": "unknown"}),
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
+            ),
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ITSMRequestError as exc:
         result.ticket_comment_outcome = "failed"
         _save_run(
             result,
-            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.failed",
+                {"outcome": "failed", **(actor_metadata or {})},
+            ),
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     result.ticket_comment_published = True
@@ -1728,9 +1940,67 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
     result.ticket_comment_outcome = "published"
     _save_run(
         result,
-        audit_event=(result.id, result.case_id, "publish.succeeded", {"outcome": "published"}),
+        audit_event=(
+            result.id,
+            result.case_id,
+            "publish.succeeded",
+            {"outcome": "published", **(actor_metadata or {})},
+        ),
     )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
+
+
+async def _recheck_external_write_authorization(
+    config: RunnerAuthConfig, token: str | None
+) -> str:
+    """Fail closed if current workspace membership cannot authorize this Jira write."""
+    if not token:
+        raise HTTPException(status_code=401, detail="A workspace runner session is required.")
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0, connect=2.0),
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            response = await client.post(
+                f"{config.control_plane_api_url}/api/v1/runner/session/authorize-action",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"action": "publish_ticket_reply"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Current workspace authorization could not be verified; Jira was not changed.",
+        ) from exc
+    if response.status_code in {401, 403, 404}:
+        raise HTTPException(
+            status_code=403,
+            detail="Current workspace membership or role does not authorize Jira publication.",
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=503,
+            detail="Current workspace authorization could not be verified; Jira was not changed.",
+        )
+    try:
+        payload = response.json()
+        if payload.get("authorized") is not True:
+            raise HTTPException(
+                status_code=403,
+                detail="Current workspace role does not authorize Jira publication.",
+            )
+        role = payload.get("role")
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Current workspace authorization returned an invalid response; Jira was not changed.",
+        ) from exc
+    if role not in {"Owner", "Admin", "Approver"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Current workspace role does not authorize Jira publication.",
+        )
+    return str(role)
 
 
 def _matches_reviewed_ticket(
@@ -1840,14 +2110,21 @@ async def workflow_execution_steps(run_id: str) -> list[dict[str, object]]:
 
 
 @app.post("/api/workflows/{run_id}/decision", response_model=WorkflowResult)
-async def decide(run_id: str, request: DecisionRequest) -> WorkflowResult:
+async def decide(
+    run_id: str, request: DecisionRequest, http_request: Request
+) -> WorkflowResult:
     lock = DECISION_LOCKS.setdefault(run_id, asyncio.Lock())
     async with lock:
-        return await _decide_locked(run_id, request)
+        return await _decide_locked(
+            run_id, request, actor_metadata=_audit_actor_metadata(http_request)
+        )
 
 
 async def _decide_locked(
-    run_id: str, request: DecisionRequest
+    run_id: str,
+    request: DecisionRequest,
+    *,
+    actor_metadata: dict[str, object] | None = None,
 ) -> WorkflowResult:
     result = RUNS.get(run_id)
     if result is None:
@@ -1999,6 +2276,7 @@ async def _decide_locked(
                 "to_status": result.status,
                 "decision_version": result.approval_version,
                 "score": result.score,
+                **(actor_metadata or {}),
             },
         ),
     )

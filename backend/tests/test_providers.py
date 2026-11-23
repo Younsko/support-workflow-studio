@@ -51,8 +51,6 @@ class FakeAsyncClient:
         return self.model_response or self.response
 
 
-
-
 def test_groq_requires_explicit_provider(monkeypatch) -> None:
     for name in ("MODEL_PROVIDER", "MODEL_NAME", "MODEL_API_KEY", "MODEL_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
@@ -93,7 +91,35 @@ def test_groq_key_is_not_sent_to_another_compatible_host(monkeypatch) -> None:
     assert config.live is False
 
 
-def test_saved_model_key_and_consent_are_rejected_after_endpoint_change(monkeypatch) -> None:
+def test_ollama_cloud_key_requires_a_destination_scope(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://ollama.com/v1")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-cloud-model")
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_API_KEY", "synthetic-ollama-cloud-key")
+    monkeypatch.delenv("MODEL_API_KEY_SCOPE", raising=False)
+
+    unscoped = ProviderConfig.from_env()
+    assert unscoped.api_key == ""
+    assert unscoped.live is False
+
+    scope = providers.model_destination_scope(
+        "openai-compatible", "https://ollama.com/v1"
+    )
+    monkeypatch.setenv("MODEL_API_KEY_SCOPE", scope)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", scope)
+    scoped = ProviderConfig.from_env()
+
+    assert scoped.api_key == "synthetic-ollama-cloud-key"
+    assert scoped.live is True
+    assert scoped.requires_external_ticket_consent is True
+    assert scoped.external_ticket_inference_allowed is True
+
+
+def test_saved_model_key_and_consent_are_rejected_after_endpoint_change(
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
     monkeypatch.setenv("MODEL_NAME", "synthetic-model")
     monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
@@ -115,7 +141,9 @@ def test_saved_model_key_and_consent_are_rejected_after_endpoint_change(monkeypa
     monkeypatch.setenv("MODEL_API_KEY", "synthetic-key-for-openai")
     monkeypatch.setenv(
         "MODEL_API_KEY_SCOPE",
-        providers.model_destination_scope("openai-compatible", "https://api.openai.com/v1"),
+        providers.model_destination_scope(
+            "openai-compatible", "https://api.openai.com/v1"
+        ),
     )
     consent_only_stale = ProviderConfig.from_env()
     assert consent_only_stale.api_key == "synthetic-key-for-openai"
@@ -222,9 +250,46 @@ def test_openai_compatible_request_and_response_shape(monkeypatch) -> None:
     }
 
 
+def test_ollama_cloud_omits_unsupported_structured_output_format(monkeypatch) -> None:
+    response = FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+    client = FakeAsyncClient(response=response, timeout=9)
+    monkeypatch.setattr(providers.httpx, "AsyncClient", lambda **kwargs: client)
+    config = ProviderConfig(
+        provider="openai-compatible",
+        model="synthetic-cloud-model",
+        api_key="synthetic-cloud-key",
+        base_url="https://ollama.com/v1",
+        timeout=9,
+        max_calls=4,
+        external_ticket_consent=True,
+    )
+
+    result = asyncio.run(
+        providers.generate(
+            config,
+            "Return JSON.",
+            "Analyze a synthetic request.",
+            response_format={"type": "json_schema", "json_schema": {"name": "result"}},
+        )
+    )
+
+    assert result == '{"ok": true}'
+    assert client.request is not None
+    body = client.request["json"]
+    assert isinstance(body, dict)
+    assert "response_format" not in body
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    system_message = messages[0]
+    assert isinstance(system_message, dict)
+    assert "application validates the response" in system_message["content"]
+
+
 def test_openai_compatible_retries_rate_limit_once(monkeypatch) -> None:
     class RateResponse(FakeResponse):
-        def __init__(self, payload: object, status_code: int, headers: dict[str, str]) -> None:
+        def __init__(
+            self, payload: object, status_code: int, headers: dict[str, str]
+        ) -> None:
             super().__init__(payload)
             self.status_code = status_code
             self.headers = headers
@@ -253,7 +318,9 @@ def test_openai_compatible_retries_rate_limit_once(monkeypatch) -> None:
             ]
             self.calls = 0
 
-        async def post(self, url: str, *, headers: dict[str, str], json: dict[str, object]):
+        async def post(
+            self, url: str, *, headers: dict[str, str], json: dict[str, object]
+        ):
             self.request = {"url": url, "headers": headers, "json": json}
             response = self.responses[self.calls]
             self.calls += 1
@@ -343,7 +410,9 @@ def test_local_openai_compatible_endpoint_is_allowed(monkeypatch) -> None:
 
 
 def test_ollama_local_native_api_needs_no_key_or_external_consent(monkeypatch) -> None:
-    response = FakeResponse({"message": {"role": "assistant", "content": "Local draft"}})
+    response = FakeResponse(
+        {"message": {"role": "assistant", "content": "Local draft"}}
+    )
     model_response = FakeResponse(
         {"models": [{"name": "installed-model", "size": 1_000_000_000}]}
     )
@@ -363,9 +432,7 @@ def test_ollama_local_native_api_needs_no_key_or_external_consent(monkeypatch) -
     assert config.live is True
     assert config.requires_external_ticket_consent is False
     assert asyncio.run(providers.generate(config, "System", "Prompt")) == "Local draft"
-    assert client.model_list_request == {
-        "url": "http://127.0.0.1:11434/api/tags"
-    }
+    assert client.model_list_request == {"url": "http://127.0.0.1:11434/api/tags"}
     assert client.request == {
         "url": "http://127.0.0.1:11434/api/chat",
         "headers": {"content-type": "application/json"},
@@ -398,9 +465,12 @@ def test_ollama_local_rejects_remote_endpoint(monkeypatch) -> None:
     assert asyncio.run(providers.generate(config, "System", "Prompt")) == ""
     assert client.request is None
 
+
 def test_ollama_local_refuses_cloud_model_stub_before_prompt(monkeypatch) -> None:
     response = FakeResponse({"message": {"role": "assistant", "content": "No"}})
-    model_response = FakeResponse({"models": [{"name": "cloud-model:cloud", "size": 384}]})
+    model_response = FakeResponse(
+        {"models": [{"name": "cloud-model:cloud", "size": 384}]}
+    )
     client = FakeAsyncClient(
         response=response, model_response=model_response, timeout=5
     )
@@ -451,7 +521,9 @@ def test_openai_compatible_rejects_malformed_response(monkeypatch) -> None:
         asyncio.run(providers.generate(config, "System", "Prompt"))
 
 
-def test_openai_compatible_rejects_remote_plain_http_before_request(monkeypatch) -> None:
+def test_openai_compatible_rejects_remote_plain_http_before_request(
+    monkeypatch,
+) -> None:
     response = FakeResponse({"choices": [{"message": {"content": "Must not run"}}]})
     client = FakeAsyncClient(response=response, timeout=5)
     monkeypatch.setattr(providers.httpx, "AsyncClient", lambda **kwargs: client)

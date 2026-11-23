@@ -1,8 +1,10 @@
 # Production readiness
 
-This repository is a local prototype with synthetic examples. It can poll an operator-configured Jira Service Management queue, perform review-only triage, and publish a reply only after separate human approval and a publish action. It does not include user accounts, tenant isolation, managed secrets, or a production audit service.
+This repository is a local prototype with synthetic examples. It can poll an operator-configured Jira Service Management queue, perform review-only triage, and publish a reply only after separate human approval and a publish action. A loopback-only Docker Compose package makes the single-operator prototype easier to run, but it does not include user accounts, tenant isolation, managed secrets, an enrolled customer runner, or a production audit service.
 
-Before using real requests, define and verify:
+The current product direction is a hosted team control plane paired with an open-source runner on a customer-controlled host, for support teams of about 5–50 people. Start EU-first, use Jira Service Management plus Confluence for the synthetic-data pilot, and let customers bring model API credentials or use local Ollama. The vendor identity, legal basis, retention periods, and concrete SLOs remain undecided.
+
+Before using real requests in a hosted or shared deployment, define and verify:
 
 - Ticket source, approved read and write actions, and the exact customer-send policy.
 - Identity provider, reviewer roles, tenant isolation, and audit access.

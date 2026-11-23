@@ -8,8 +8,10 @@ import pytest
 from app import main
 from app.fixtures import demo_cases
 from app.schemas import WorkflowResult
-from app.store import LocalStore, WorkflowStateStore
+from app.store import LocalStore, WorkflowStateStore, configured_store
 from fastapi.testclient import TestClient
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 def _minimal_run(run_id: str | None = None) -> WorkflowResult:
@@ -33,6 +35,125 @@ def _minimal_run(run_id: str | None = None) -> WorkflowResult:
         reviewer_findings=[],
         stages=[],
     )
+
+
+def test_private_local_mode_rejects_postgres_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRIVATE_LOCAL_MODE", "true")
+    monkeypatch.setenv(
+        "SUPPORT_WORKFLOW_DATABASE_URL",
+        "postgresql://user:placeholder@db.example/database",
+    )
+
+    with pytest.raises(RuntimeError, match="PRIVATE_LOCAL_MODE refuses Postgres storage"):
+        configured_store()
+
+
+def test_local_store_is_immutably_bound_to_one_workspace_runner(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    workspace_id = "1" * 32
+    runner_id = "2" * 32
+
+    store.bind_runner_identity(workspace_id, runner_id)
+    LocalStore(tmp_path / "state.sqlite3").bind_runner_identity(workspace_id, runner_id)
+
+    with pytest.raises(RuntimeError, match="another workspace runner"):
+        store.bind_runner_identity("3" * 32, runner_id)
+    with pytest.raises(ValueError, match="control-plane resource IDs"):
+        store.bind_runner_identity("workspace", runner_id)
+
+
+def test_runner_identity_is_bound_at_application_startup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app.workflow_api import WorkflowRegistry
+
+    state_store = LocalStore(tmp_path / "runner-state.sqlite3")
+    workflow_registry = WorkflowRegistry(tmp_path / "runner-workflows.sqlite3")
+    workspace_id = "4" * 32
+    runner_id = "5" * 32
+    monkeypatch.setenv("SUPPORT_WORKSPACE_ID", workspace_id)
+    monkeypatch.setenv("SUPPORT_RUNNER_ID", runner_id)
+    monkeypatch.setattr(main, "configured_store", lambda: state_store)
+    monkeypatch.setattr(main, "configured_workflow_registry", lambda: workflow_registry)
+
+    with TestClient(main.app):
+        pass
+
+    with sqlite3.connect(state_store.path) as connection:
+        assert connection.execute(
+            "SELECT workspace_id, runner_id FROM runner_identity WHERE singleton = 1"
+        ).fetchone() == (workspace_id, runner_id)
+    with sqlite3.connect(workflow_registry.path) as connection:
+        assert connection.execute(
+            "SELECT workspace_id, runner_id FROM workflow_runner_identity WHERE singleton = 1"
+        ).fetchone() == (workspace_id, runner_id)
+
+
+def test_startup_binding_failure_cleans_up_the_global_state_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app.workflow_api import WorkflowRegistry
+
+    state_store = LocalStore(tmp_path / "runner-state.sqlite3")
+    state_store.bind_runner_identity("1" * 32, "2" * 32)
+    workflow_registry = WorkflowRegistry(tmp_path / "runner-workflows.sqlite3")
+    monkeypatch.setenv("SUPPORT_WORKSPACE_ID", "3" * 32)
+    monkeypatch.setenv("SUPPORT_RUNNER_ID", "4" * 32)
+    monkeypatch.setattr(main, "configured_store", lambda: state_store)
+    monkeypatch.setattr(main, "configured_workflow_registry", lambda: workflow_registry)
+
+    with pytest.raises(RuntimeError, match="another workspace runner"), TestClient(
+        main.app
+    ):
+        pass
+
+    assert main.STATE_STORE is None
+
+
+def test_configured_environment_file_uses_persistent_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    target = tmp_path / "runtime" / "settings.env"
+    monkeypatch.setenv("SUPPORT_WORKFLOW_ENV_PATH", str(target))
+
+    assert main._configured_env_path() == target
+
+
+async def test_local_client_guard_accepts_only_configured_compose_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SUPPORT_TRUSTED_LOCAL_CLIENT_IP", "172.29.241.1")
+
+    def request_from(address: str, host: str = "127.0.0.1:8000") -> Request:
+        return Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/health/live",
+                "raw_path": b"/health/live",
+                "query_string": b"",
+                "headers": [(b"host", host.encode("ascii"))],
+                "client": (address, 43100),
+                "server": ("127.0.0.1", 8000),
+            }
+        )
+
+    async def endpoint(_: Request) -> Response:
+        return Response(status_code=204)
+
+    trusted = await main.require_local_client(request_from("172.29.241.1"), endpoint)
+    other_container = await main.require_local_client(
+        request_from("172.29.241.2"), endpoint
+    )
+    trusted_with_remote_host = await main.require_local_client(
+        request_from("172.29.241.1", host="support.example.com"), endpoint
+    )
+
+    assert trusted.status_code == 204
+    assert other_container.status_code == 403
+    assert trusted_with_remote_host.status_code == 403
 
 
 def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path) -> None:
@@ -324,6 +445,43 @@ def test_run_audit_events_survive_reopen_in_stable_order_without_content(tmp_pat
     assert "api_key" not in serialized_rows.lower()
 
 
+def test_run_audit_persists_pseudonymous_actor_and_role(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    actor_id = "a" * 64
+    event = store.append_run_event(
+        uuid4().hex,
+        "SUP-4821",
+        "decision.approved",
+        {"actor_id": actor_id, "actor_role": "Approver"},
+    )
+    assert event["actor_id"] == actor_id
+    assert event["actor_role"] == "Approver"
+
+
+def test_run_audit_schema_migrates_existing_database(tmp_path) -> None:
+    database = tmp_path / "legacy-state.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """CREATE TABLE run_events (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,
+                run_id TEXT NOT NULL,
+                case_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT,
+                decision_version INTEGER,
+                score REAL,
+                outcome TEXT
+            )"""
+        )
+    LocalStore(database)
+    with sqlite3.connect(database) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(run_events)")}
+    assert {"actor_id", "actor_role"} <= columns
+
+
 @pytest.mark.parametrize(
     "metadata",
     [
@@ -332,6 +490,8 @@ def test_run_audit_events_survive_reopen_in_stable_order_without_content(tmp_pat
         {"api_key": "secret"},
         {"token": "secret"},
         {"score": "high"},
+        {"actor_id": "person@example.com"},
+        {"actor_role": "SuperAdmin"},
     ],
 )
 def test_run_audit_rejects_content_and_secret_shaped_metadata(tmp_path, metadata) -> None:

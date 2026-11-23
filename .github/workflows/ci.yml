@@ -10,6 +10,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_TEST_URL: postgresql://postgres:${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/support_workflow_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: support_workflow_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d support_workflow_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -22,7 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install Python package and development tools
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,postgres,control-plane]"
       - name: Check Python lint
         run: python -m ruff check backend/app backend/tests
       - name: Run backend tests
@@ -35,3 +51,86 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+      - name: Build and smoke-test the local container
+        run: |
+          cleanup() {
+            docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker compose config --quiet
+          docker compose up --build --detach
+          python - <<'PY'
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:8000"
+          last_error = None
+          for _ in range(40):
+              try:
+                  with urllib.request.urlopen(f"{base}/health/ready", timeout=2) as response:
+                      assert response.status == 200
+                  with urllib.request.urlopen(base, timeout=2) as response:
+                      page = response.read().decode("utf-8")
+                      assert response.status == 200 and "Support Workflow Studio" in page
+                  break
+              except urllib.error.HTTPError as exc:
+                  last_error = f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}"
+                  time.sleep(1)
+              except (OSError, urllib.error.URLError) as exc:
+                  last_error = str(exc)
+                  time.sleep(1)
+          else:
+              raise RuntimeError(f"Compose service did not become healthy: {last_error}")
+          PY
+      - name: Build and smoke-test the metadata-only control plane
+        run: |
+          cleanup_control_plane() {
+            docker rm --force support-control-plane-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup_control_plane EXIT
+          docker build --file Dockerfile.control-plane --tag support-control-plane:ci .
+          control_plane_test_url="${POSTGRES_TEST_URL/localhost/host.docker.internal}"
+          docker run --detach --name support-control-plane-ci \
+            --publish 127.0.0.1:8766:8001 \
+            --add-host=host.docker.internal:host-gateway \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --env SUPPORT_CONTROL_PLANE_DATABASE_URL="$control_plane_test_url" \
+            support-control-plane:ci
+          python - <<'PY'
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:8766"
+          last_error = None
+          for _ in range(40):
+              try:
+                  with urllib.request.urlopen(f"{base}/health/ready", timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except urllib.error.HTTPError as exc:
+                  last_error = f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}"
+                  time.sleep(1)
+              except (OSError, urllib.error.URLError) as exc:
+                  last_error = str(exc)
+                  time.sleep(1)
+          else:
+              raise RuntimeError(f"Control plane did not become ready: {last_error}")
+
+          with urllib.request.urlopen(f"{base}/", timeout=2) as response:
+              page = response.read().decode("utf-8")
+              assert response.status == 200 and '<div id="root"></div>' in page
+              assert response.headers.get("Cache-Control") == "no-store"
+              assert "default-src 'self'" in response.headers.get("Content-Security-Policy", "")
+          with urllib.request.urlopen(f"{base}/api/v1/auth/config", timeout=2) as response:
+              assert response.status == 200
+
+          try:
+              urllib.request.urlopen(f"{base}/api/v1/me", timeout=2)
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 401
+          else:
+              raise AssertionError("Control-plane metadata endpoints must require a bearer token.")
+          PY

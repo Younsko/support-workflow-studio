@@ -8,6 +8,7 @@ tenant isolation, runner execution, or production persistence.
 from __future__ import annotations
 
 import hashlib
+import re
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict
@@ -71,12 +72,44 @@ class WorkflowRegistry:
                     content_hash TEXT
                 )"""
             )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS workflow_runner_identity (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    workspace_id TEXT NOT NULL,
+                    runner_id TEXT NOT NULL
+                )"""
+            )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
+
+    def bind_runner_identity(self, workspace_id: str, runner_id: str) -> None:
+        if not re.fullmatch(r"[a-f0-9]{32}", workspace_id) or not re.fullmatch(
+            r"[a-f0-9]{32}", runner_id
+        ):
+            raise ValueError("Workspace and runner IDs must be control-plane resource IDs.")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                "SELECT workspace_id, runner_id FROM workflow_runner_identity WHERE singleton = 1"
+            ).fetchone()
+            if current is None:
+                connection.execute(
+                    "INSERT INTO workflow_runner_identity(singleton, workspace_id, runner_id) VALUES (1, ?, ?)",
+                    (workspace_id, runner_id),
+                )
+            elif current["workspace_id"] != workspace_id or current["runner_id"] != runner_id:
+                raise RuntimeError("Workflow database is already bound to another workspace runner.")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def list_workflows(self) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:

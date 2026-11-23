@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:control-plane": "vite --host 127.0.0.1 --port 5174 --strictPort --configLoader runner --open /control-plane.html",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },

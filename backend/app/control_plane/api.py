@@ -1,0 +1,603 @@
+"""Authenticated metadata-only control-plane API.
+
+Run this ASGI app separately from the ticket runner. It accepts identity and
+workspace metadata only. Browser sign-in uses the configured OIDC provider;
+ticket content stays in the support runner and never passes through a relay here.
+"""
+
+# FastAPI dependency calls in defaults are its standard injection syntax.
+# ruff: noqa: B008
+
+from __future__ import annotations
+
+import ipaddress
+import os
+import re
+import secrets
+import threading
+import unicodedata
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Literal
+from urllib.parse import urlsplit
+
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .auth import OIDCConfig, Principal, current_principal
+from .session_tokens import (
+    SessionSigningConfig,
+    SessionTokenConfigurationError,
+    SessionTokenInvalid,
+    issue_workspace_session,
+    public_jwks,
+    verify_workspace_session_with_signing_config,
+)
+from .store import (
+    InvitationInvalid,
+    MembershipDenied,
+    PostgresControlPlaneStore,
+    RunnerCredentialInvalid,
+    WorkspaceConflict,
+    WorkspaceNotFound,
+)
+
+Role = Literal["Owner", "Admin", "Builder", "Operator", "Approver", "Viewer"]
+_EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])$")
+
+
+class WorkspaceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    slug: str | None = Field(default=None, min_length=3, max_length=60)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Workspace name cannot be blank.")
+        return value
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip().lower()
+        if not _SLUG_PATTERN.fullmatch(value):
+            raise ValueError(
+                "Slug must use lowercase letters, numbers, and internal hyphens."
+            )
+        return value
+
+
+class InvitationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=254)
+    role: Role
+    expires_in_hours: int = Field(default=168, ge=1, le=168)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if not _EMAIL_PATTERN.fullmatch(value):
+            raise ValueError("A valid email address is required.")
+        return value
+
+
+class InvitationRedeem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=32, max_length=128)
+
+
+class MemberRoleChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Role
+
+
+class RunnerEnrollmentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    expires_in_days: int = Field(default=90, ge=1, le=90)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Runner name cannot be blank.")
+        return value
+
+
+class RunnerActionAuthorization(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["publish_ticket_reply"]
+
+
+def _configured_browser_origins() -> list[str]:
+    origins: set[str] = set()
+    raw_origins = os.getenv("CONTROL_PLANE_ALLOWED_ORIGINS", "")
+    for raw in raw_origins.split(","):
+        value = raw.strip()
+        if not value:
+            continue
+        parsed = urlsplit(value)
+        try:
+            loopback = bool(parsed.hostname) and (
+                ipaddress.ip_address(parsed.hostname).is_loopback
+                if parsed.hostname != "localhost"
+                else True
+            )
+        except ValueError:
+            loopback = False
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+        ):
+            raise RuntimeError(
+                "CONTROL_PLANE_ALLOWED_ORIGINS must contain exact HTTPS origins, or HTTP loopback origins for local development."
+            )
+        origins.add(f"{parsed.scheme.lower()}://{parsed.netloc.lower()}")
+    return sorted(origins)
+
+
+def _slug_from_name(name: str) -> str:
+    normalized = (
+        unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    )
+    slug = re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-")[:60].strip("-")
+    if len(slug) < 3:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide a workspace slug with at least three characters.",
+        )
+    return slug
+
+
+def get_control_plane_store(request: Request) -> PostgresControlPlaneStore:
+    store = request.app.state.control_plane_store
+    if store is not None:
+        return store
+    dsn = os.getenv("SUPPORT_CONTROL_PLANE_DATABASE_URL", "").strip()
+    if not dsn:
+        raise HTTPException(
+            status_code=503, detail="Control-plane storage is not configured."
+        )
+    runner_dsn = os.getenv("SUPPORT_WORKFLOW_DATABASE_URL", "").strip()
+    if runner_dsn:
+        try:
+            same_database = PostgresControlPlaneStore.database_target(dsn) == (
+                PostgresControlPlaneStore.database_target(runner_dsn)
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503, detail="Database separation could not be verified."
+            ) from exc
+        if same_database:
+            raise HTTPException(
+                status_code=503,
+                detail="Control-plane storage must use a database separate from runner ticket data.",
+            )
+    with request.app.state.store_lock:
+        store = request.app.state.control_plane_store
+        if store is None:
+            try:
+                store = PostgresControlPlaneStore(dsn)
+            except (RuntimeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=503, detail="Control-plane storage is unavailable."
+                ) from exc
+            request.app.state.control_plane_store = store
+    return store
+
+
+def create_control_plane_app(
+    store: PostgresControlPlaneStore | None = None,
+) -> FastAPI:
+    app = FastAPI(
+        title="Support Workflow Studio Control Plane",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.state.control_plane_store = store
+    app.state.store_lock = threading.Lock()
+    browser_origins = _configured_browser_origins()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=browser_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Runner-Token"],
+    )
+
+    @app.exception_handler(WorkspaceNotFound)
+    async def workspace_missing(_: Request, __: WorkspaceNotFound) -> Response:
+        return Response(status_code=404)
+
+    @app.exception_handler(MembershipDenied)
+    async def access_denied(_: Request, exc: MembershipDenied) -> Response:
+        return Response(content=str(exc), status_code=403, media_type="text/plain")
+
+    @app.exception_handler(WorkspaceConflict)
+    async def workspace_conflict(_: Request, exc: WorkspaceConflict) -> Response:
+        return Response(content=str(exc), status_code=409, media_type="text/plain")
+
+    @app.exception_handler(InvitationInvalid)
+    async def invitation_invalid(_: Request, exc: InvitationInvalid) -> Response:
+        return Response(content=str(exc), status_code=400, media_type="text/plain")
+
+    @app.exception_handler(RunnerCredentialInvalid)
+    async def runner_credential_invalid(
+        _: Request, exc: RunnerCredentialInvalid
+    ) -> Response:
+        return Response(content=str(exc), status_code=401, media_type="text/plain")
+
+    @app.exception_handler(SessionTokenConfigurationError)
+    async def session_signing_unavailable(_: Request, __: SessionTokenConfigurationError) -> Response:
+        return Response(
+            content="Workspace session issuance is not configured.",
+            status_code=503,
+            media_type="text/plain",
+        )
+
+    @app.get("/health/live")
+    def live() -> dict[str, str]:
+        return {"status": "live"}
+
+    @app.get("/health/ready")
+    def ready(
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        control_store.check_ready()
+        return {"status": "ready"}
+
+    @app.get("/api/v1/auth/config")
+    def public_auth_config() -> dict[str, object]:
+        try:
+            oidc = OIDCConfig.from_env()
+        except RuntimeError:
+            return {
+                "configured": False,
+                "issuer": None,
+                "audience": None,
+                "client_id": None,
+            }
+        client_id = os.getenv("CONTROL_PLANE_OIDC_CLIENT_ID", "").strip()
+        if not client_id or len(client_id) > 256:
+            return {
+                "configured": False,
+                "issuer": oidc.issuer,
+                "audience": oidc.audience,
+                "client_id": None,
+            }
+        return {
+            "configured": True,
+            "issuer": oidc.issuer,
+            "audience": oidc.audience,
+            "client_id": client_id,
+        }
+
+    @app.get("/.well-known/runner-session-jwks.json")
+    def runner_session_jwks(response: Response) -> dict[str, object]:
+        try:
+            keys = public_jwks()
+        except SessionTokenConfigurationError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Workspace session signing keys are not configured.",
+            ) from exc
+        response.headers["Cache-Control"] = "public, max-age=60"
+        return keys
+
+    @app.get("/api/v1/me")
+    def me(
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        return {
+            "subject": principal.subject,
+            "email": principal.email,
+            "workspaces": control_store.list_workspaces(principal.subject),
+        }
+
+    @app.get("/api/v1/workspaces")
+    def list_workspaces(
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> list[dict[str, object]]:
+        return control_store.list_workspaces(principal.subject)
+
+    @app.post("/api/v1/workspaces", status_code=201)
+    def create_workspace(
+        body: WorkspaceCreate,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        slug = body.slug or _slug_from_name(body.name)
+        return control_store.create_workspace(principal, name=body.name, slug=slug)
+
+    @app.get("/api/v1/workspaces/{workspace_id}")
+    def get_workspace(
+        workspace_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        value = control_store.get_workspace(workspace_id, principal.subject)
+        if value is None:
+            raise WorkspaceNotFound(workspace_id)
+        return value
+
+    @app.get("/api/v1/workspaces/{workspace_id}/members")
+    def list_members(
+        workspace_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> list[dict[str, object]]:
+        return control_store.list_members(workspace_id, principal.subject)
+
+    @app.patch("/api/v1/workspaces/{workspace_id}/members/{subject}", status_code=204)
+    def change_member_role(
+        workspace_id: str,
+        subject: str,
+        body: MemberRoleChange,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> Response:
+        control_store.change_member_role(
+            workspace_id, subject, principal, role=body.role
+        )
+        return Response(status_code=204)
+
+    @app.delete("/api/v1/workspaces/{workspace_id}/members/{subject}", status_code=204)
+    def remove_member(
+        workspace_id: str,
+        subject: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> Response:
+        control_store.remove_member(workspace_id, subject, principal)
+        return Response(status_code=204)
+
+    @app.post("/api/v1/workspaces/{workspace_id}/invitations", status_code=201)
+    def invite_member(
+        workspace_id: str,
+        body: InvitationCreate,
+        response: Response,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        now = datetime.now(UTC)
+        token = secrets.token_urlsafe(32)
+        invitation = control_store.create_invitation(
+            workspace_id,
+            principal,
+            email=body.email,
+            role=body.role,
+            token=token,
+            expires_at=now + timedelta(hours=body.expires_in_hours),
+            now=now,
+        )
+        return {**invitation, "token": token}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/invitations")
+    def list_invitations(
+        workspace_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> list[dict[str, object]]:
+        return control_store.list_invitations(workspace_id, principal.subject)
+
+    @app.delete(
+        "/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}", status_code=204
+    )
+    def revoke_invitation(
+        workspace_id: str,
+        invitation_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> Response:
+        control_store.revoke_invitation(workspace_id, invitation_id, principal)
+        return Response(status_code=204)
+
+    @app.post("/api/v1/invitations/{invitation_id}/redeem")
+    def redeem_invitation(
+        invitation_id: str,
+        body: InvitationRedeem,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        return control_store.redeem_invitation(invitation_id, body.token, principal)
+
+    @app.get("/api/v1/workspaces/{workspace_id}/audit")
+    def list_audit_events(
+        workspace_id: str,
+        limit: int = Query(default=100, ge=1, le=500),
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> list[dict[str, object]]:
+        return control_store.list_audit_events(
+            workspace_id, principal.subject, limit=limit
+        )
+
+    @app.post("/api/v1/workspaces/{workspace_id}/runners", status_code=201)
+    def create_runner_enrollment(
+        workspace_id: str,
+        body: RunnerEnrollmentCreate,
+        response: Response,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        token = secrets.token_urlsafe(32)
+        runner = control_store.create_runner_enrollment(
+            workspace_id,
+            principal,
+            name=body.name,
+            token=token,
+            expires_at=datetime.now(UTC) + timedelta(days=body.expires_in_days),
+        )
+        return {**runner, "token": token}
+
+    @app.post("/api/v1/workspaces/{workspace_id}/runners/{runner_id}/session")
+    def create_runner_session(
+        workspace_id: str,
+        runner_id: str,
+        response: Response,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        role = control_store.authorize_runner_session(
+            workspace_id, runner_id, principal.subject
+        )
+        try:
+            config = SessionSigningConfig.from_env()
+            token, expires_at = issue_workspace_session(
+                principal,
+                workspace_id=workspace_id,
+                runner_id=runner_id,
+                role=role,
+                config=config,
+            )
+        except SessionTokenInvalid as exc:
+            raise HTTPException(status_code=401, detail="The identity session is invalid.") from exc
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        return {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_at": expires_at,
+            "workspace_id": workspace_id,
+            "runner_id": runner_id,
+        }
+
+    @app.post("/api/v1/runner/session/authorize-action")
+    def authorize_runner_action(
+        body: RunnerActionAuthorization,
+        response: Response,
+        authorization: str | None = Header(default=None),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        scheme, separator, token = (authorization or "").partition(" ")
+        if scheme.casefold() != "bearer" or not separator or not token.strip():
+            raise HTTPException(status_code=401, detail="A workspace runner session is required.")
+        try:
+            signing = SessionSigningConfig.from_env()
+            claims = verify_workspace_session_with_signing_config(
+                token.strip(),
+                config=signing,
+            )
+        except SessionTokenInvalid as exc:
+            raise HTTPException(status_code=401, detail="The workspace runner session is invalid.") from exc
+        except SessionTokenConfigurationError as exc:
+            raise HTTPException(status_code=503, detail="Workspace session validation is unavailable.") from exc
+        try:
+            role = control_store.authorize_runner_action(
+                claims["workspace_id"], claims["runner_id"], claims["sub"], body.action
+            )
+        except MembershipDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except WorkspaceNotFound as exc:
+            raise HTTPException(status_code=403, detail="Current workspace membership or runner access is inactive.") from exc
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        return {"authorized": True, "role": role}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/runners")
+    def list_runners(
+        workspace_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> list[dict[str, object]]:
+        return control_store.list_runners(workspace_id, principal.subject)
+
+    @app.delete(
+        "/api/v1/workspaces/{workspace_id}/runners/{runner_id}", status_code=204
+    )
+    def revoke_runner(
+        workspace_id: str,
+        runner_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> Response:
+        control_store.revoke_runner(workspace_id, runner_id, principal)
+        return Response(status_code=204)
+
+    @app.post("/api/v1/runners/{runner_id}/heartbeat")
+    def runner_heartbeat(
+        runner_id: str,
+        response: Response,
+        runner_token: str = Header(
+            alias="X-Runner-Token", min_length=32, max_length=128
+        ),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        response.headers["Cache-Control"] = "no-store"
+        return control_store.record_runner_heartbeat(runner_id, runner_token)
+
+    static_dir = Path(__file__).resolve().parents[1] / "static"
+
+    @app.get("/", include_in_schema=False)
+    def control_plane_home() -> Response:
+        page = static_dir / "control-plane.html"
+        if not page.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="Control-plane UI is not built. Run the frontend production build.",
+            )
+        return FileResponse(page, headers={"Cache-Control": "no-store"})
+
+    app.mount(
+        "/assets",
+        StaticFiles(directory=static_dir / "assets", check_dir=False),
+        name="control-plane-assets",
+    )
+
+    @app.middleware("http")
+    async def secure_browser_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; connect-src 'self' https:; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self' https:",
+        )
+        return response
+
+    return app
+
+
+app = create_control_plane_app()

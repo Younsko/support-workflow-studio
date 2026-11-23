@@ -1,6 +1,7 @@
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
 import { CheckCircle2, CircleAlert, PlugZap, ShieldCheck, X } from 'lucide-react'
 import { translate, type AppLocale } from './i18n'
+import { apiFetch } from './runnerAuth'
 
 type SetupValues = {
   jira_base_url: string
@@ -50,7 +51,7 @@ function modelKeyTarget(provider: string, baseUrl: string) {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } })
+  const response = await apiFetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.detail || `Request failed (${response.status})`)

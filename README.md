@@ -51,7 +51,7 @@ The canvas can save and publish immutable workflow versions. Today, only the con
 - **Bounded execution:** strict compilation of the starter flow, configuration and fingerprint checks, immutable version binding, local idempotency keys, and persisted stage timing for published runs.
 - **Support orchestration:** level-one through level-three-plus triage, specialist investigation lanes, an architect/critic/revision loop with a quality threshold, independent verification, and evidence references.
 - **Knowledge sources:** an operator-approved local folder or read-only, scope-limited Confluence search with explicit consent.
-- **Model providers:** deterministic demo mode, local Ollama, and compatible OpenAI or Anthropic APIs, configured locally.
+- **Model providers:** deterministic demo mode, local Ollama, Ollama Cloud through its compatible API, and compatible OpenAI or Anthropic APIs, configured locally with destination-scoped credentials and explicit external-inference consent.
 - **Human control:** approve, edit, or reject a draft; re-review edits; and publish to Jira in a separate step. Low-quality drafts are blocked, and uncertain write outcomes are not retried automatically.
 - **Bilingual application UI:** English and French translations for the application, setup, and workflow canvas.
 
@@ -72,6 +72,8 @@ npm --prefix frontend run build
 On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000), select the synthetic sample ticket, and start the workflow. Demo mode needs no model API key or Jira account.
 
+For a local container preview, see the [self-hosted Compose guide](docs/self-hosted-container.md). It binds to loopback and keeps workflow state in a named local volume.
+
 To connect Jira Service Management or a knowledge source, start with the [connector setup guide](docs/connector-setup.md). Keys stay on the local machine in the Git-ignored `.env` file. External model use requires explicit consent to send the data required by the selected provider.
 
 ## Design and motion
@@ -80,9 +82,9 @@ The application is built with React, TypeScript, and CSS. The visual direction w
 
 ## Architecture and current limits
 
-Workflow definitions, the support runtime, ITSM adapters, and model providers are separate parts of the system. Demo records are synthetic. The current application is a local, single-operator prototype: workflow versions and run state use SQLite, and there is no team identity or multi-tenant isolation yet.
+Workflow definitions, the support runtime, ITSM adapters, model providers, and the metadata-only control plane are separate parts of the system. Demo records are synthetic. The support application remains a local, single-operator prototype by default, with workflow and run state in SQLite. Its experimental opt-in OIDC flow exchanges the organization sign-in for a short-lived workspace/runner token, enforces a route role matrix, and records an HMAC-pseudonymous actor ID and role on approval/publication audit events. The support UI targets the single workspace/runner configured for its installation; there is no workspace switcher, tenant-scoped execution storage, or last-moment authorization check before Jira publication. The standalone control-plane console and API manage workspace membership and runner metadata in a separate database. Optional startup identity binding pins runtime databases to one workspace/runner pair. See the [control-plane foundation notes](docs/control-plane-foundation.md) for setup and the opt-in limits.
 
-This project does not yet claim production SaaS or large-scale readiness. The next steps include authentication and workspaces, a production runner and Postgres persistence, restartable step execution, approval roles, more connectors, private data paths, observability, backups, and load testing. See the [SaaS readiness plan](docs/saas-readiness.md) and [threat model](docs/threat-model.md) for details.
+This project does not yet claim production SaaS or large-scale readiness. SQLite is the default store, with an opt-in Postgres runtime store for one runner host. The Compose package is a local installation preview, not a hosted team service. Remaining work includes workspace switching, tenant-scoped execution, durable step recovery, more connectors, private data paths, observability, backups, configured identity-provider and runner deployment tests, and load testing. Jira publication now rechecks current workspace authorization immediately before the external write. See the [SaaS readiness plan](docs/saas-readiness.md) and [threat model](docs/threat-model.md) for details.
 
 ## Development
 
@@ -95,6 +97,23 @@ npm --prefix frontend run build
 ```
 
 For UI development, start FastAPI and run `npm --prefix frontend run dev` in a second terminal. Vite proxies `/api` to the local backend. See the [connector development guide](docs/connector-development.md), [backend tests](backend/tests), and [CI workflow](.github/workflows/ci.yml).
+
+### Workspace console preview
+
+To preview the separate workspace console, start the control-plane API in one terminal:
+
+```sh
+cd backend
+python -m uvicorn app.control_plane.api:app --host 127.0.0.1 --port 8001
+```
+
+Then start its Vite page in another terminal from the repository root:
+
+```sh
+npm --prefix frontend run dev:control-plane
+```
+
+Open `http://127.0.0.1:5174/control-plane.html`. With no identity-provider configuration, the page shows the setup state; signing in and managing a workspace requires Postgres and the OIDC settings described in the [control-plane notes](docs/control-plane-foundation.md). This preview does not authenticate or authorize the ticket application.
 
 ## License
 
