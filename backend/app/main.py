@@ -730,7 +730,14 @@ async def require_local_client(request: Request, call_next) -> Response:
         address = ipaddress.ip_address(host)
     except ValueError:
         address = None
-    if address is None or not address.is_loopback:
+    trusted_local_client = None
+    configured_trusted_client = os.getenv("SUPPORT_TRUSTED_LOCAL_CLIENT_IP", "").strip()
+    if configured_trusted_client:
+        try:
+            trusted_local_client = ipaddress.ip_address(configured_trusted_client)
+        except ValueError:
+            trusted_local_client = None
+    if address is None or (not address.is_loopback and address != trusted_local_client):
         return JSONResponse(
             status_code=403,
             content={"detail": "This prototype only accepts local connections."},

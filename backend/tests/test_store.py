@@ -10,6 +10,8 @@ from app.fixtures import demo_cases
 from app.schemas import WorkflowResult
 from app.store import LocalStore, WorkflowStateStore, configured_store
 from fastapi.testclient import TestClient
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 def _minimal_run(run_id: str | None = None) -> WorkflowResult:
@@ -39,7 +41,7 @@ def test_private_local_mode_rejects_postgres_storage(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("PRIVATE_LOCAL_MODE", "true")
     monkeypatch.setenv(
         "SUPPORT_WORKFLOW_DATABASE_URL",
-        "postgresql://user:secret@remote.example/database",
+        "postgresql://user:placeholder@db.example/database",
     )
 
     with pytest.raises(RuntimeError, match="PRIVATE_LOCAL_MODE refuses Postgres storage"):
@@ -53,6 +55,43 @@ def test_configured_environment_file_uses_persistent_override(
     monkeypatch.setenv("SUPPORT_WORKFLOW_ENV_PATH", str(target))
 
     assert main._configured_env_path() == target
+
+
+async def test_local_client_guard_accepts_only_configured_compose_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SUPPORT_TRUSTED_LOCAL_CLIENT_IP", "172.29.241.1")
+
+    def request_from(address: str, host: str = "127.0.0.1:8000") -> Request:
+        return Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/health/live",
+                "raw_path": b"/health/live",
+                "query_string": b"",
+                "headers": [(b"host", host.encode("ascii"))],
+                "client": (address, 43100),
+                "server": ("127.0.0.1", 8000),
+            }
+        )
+
+    async def endpoint(_: Request) -> Response:
+        return Response(status_code=204)
+
+    trusted = await main.require_local_client(request_from("172.29.241.1"), endpoint)
+    other_container = await main.require_local_client(
+        request_from("172.29.241.2"), endpoint
+    )
+    trusted_with_remote_host = await main.require_local_client(
+        request_from("172.29.241.1", host="support.example.com"), endpoint
+    )
+
+    assert trusted.status_code == 204
+    assert other_container.status_code == 403
+    assert trusted_with_remote_host.status_code == 403
 
 
 def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path) -> None:

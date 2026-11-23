@@ -9,6 +9,7 @@ services:
     environment:
       SUPPORT_WORKFLOW_DB_PATH: /var/lib/support-workflow/state.sqlite3
       SUPPORT_WORKFLOW_ENV_PATH: /var/lib/support-workflow/settings.env
+      SUPPORT_TRUSTED_LOCAL_CLIENT_IP: ${SUPPORT_TRUSTED_LOCAL_CLIENT_IP:-172.29.241.1}
     volumes:
       - workflow-state:/var/lib/support-workflow
     read_only: true
@@ -31,3 +32,10 @@ services:
 
 volumes:
   workflow-state:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${SUPPORT_COMPOSE_SUBNET:-172.29.241.0/24}
+          gateway: ${SUPPORT_TRUSTED_LOCAL_CLIENT_IP:-172.29.241.1}

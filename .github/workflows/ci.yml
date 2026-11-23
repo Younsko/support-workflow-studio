@@ -74,8 +74,11 @@ jobs:
                       page = response.read().decode("utf-8")
                       assert response.status == 200 and "Support Workflow Studio" in page
                   break
+              except urllib.error.HTTPError as exc:
+                  last_error = f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}"
+                  time.sleep(1)
               except (OSError, urllib.error.URLError) as exc:
-                  last_error = exc
+                  last_error = str(exc)
                   time.sleep(1)
           else:
               raise RuntimeError(f"Compose service did not become healthy: {last_error}")
