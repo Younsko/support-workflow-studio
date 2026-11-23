@@ -19,13 +19,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
-from .fixtures import demo_cases
 from .confluence import (
     ConfluenceAdapter,
     ConfluenceConfig,
     ConfluenceConfigurationError,
     ConfluenceRequestError,
 )
+from .execution_plan import (
+    ExecutionPlan,
+    ExecutionPlanError,
+    compile_published_workflow,
+)
+from .fixtures import demo_cases
 from .itsm import (
     ITSMConfigurationError,
     ITSMOutcomeUnknown,
@@ -33,20 +38,27 @@ from .itsm import (
     JiraConfig,
     create_itsm_adapter,
 )
-from .knowledge import KnowledgeConfigurationError, KnowledgeRequestError, knowledge_status
+from .knowledge import (
+    KnowledgeConfigurationError,
+    KnowledgeRequestError,
+    knowledge_status,
+)
 from .providers import ProviderConfig, ProviderError, model_destination_scope
 from .schemas import (
     CaseRecord,
     DecisionRequest,
     IntakeRequest,
+    PublishedWorkflowRunRequest,
     RunRequest,
     StageRecord,
     WorkflowResult,
     WorkspaceMetrics,
 )
 from .store import LocalStore, configured_store
-from .workflow_api import router as workflow_definitions_router
 from .workflow import content_fingerprint, review_edited_draft, run_workflow
+from .workflow_api import configured_workflow_registry
+from .workflow_api import router as workflow_definitions_router
+from .workflow_definitions import PublishedWorkflow
 
 load_dotenv()
 
@@ -1318,10 +1330,79 @@ async def start_workflow(request: RunRequest) -> WorkflowResult:
         return await _start_workflow_locked(request)
 
 
-async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
+@app.post(
+    "/api/v1/workflows/{workflow_id}/runs",
+    response_model=WorkflowResult,
+    status_code=201,
+)
+async def start_published_workflow(
+    workflow_id: str, request: PublishedWorkflowRunRequest
+) -> WorkflowResult:
+    if request.include_model_council and _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Model council is disabled in PRIVATE_LOCAL_MODE.",
+        )
+    registry = configured_workflow_registry()
+    try:
+        published = registry.get_published(workflow_id, request.workflow_version)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if published is None:
+        raise HTTPException(status_code=404, detail="Published workflow version not found.")
+    if published.content_hash != request.workflow_content_hash:
+        raise HTTPException(status_code=409, detail="Published workflow hash changed; reload before running.")
+    try:
+        plan = compile_published_workflow(
+            published,
+            expected_version=request.workflow_version,
+            expected_content_hash=request.workflow_content_hash,
+            provider=ProviderConfig.from_env(),
+        )
+    except ExecutionPlanError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    run_request = RunRequest(
+        case_id=request.case_id,
+        candidate_count=request.candidate_count,
+        include_model_council=request.include_model_council,
+    )
+    async with _workflow_lock(request.case_id):
+        # Setup could have changed while waiting for another run on this case.
+        try:
+            current = compile_published_workflow(
+                published,
+                expected_version=request.workflow_version,
+                expected_content_hash=request.workflow_content_hash,
+                provider=ProviderConfig.from_env(),
+            )
+        except ExecutionPlanError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if current != plan:
+            raise HTTPException(status_code=409, detail="Workflow execution bindings changed; reload and validate again.")
+        return await _start_workflow_locked(
+            run_request,
+            execution_plan=plan,
+            published_snapshot=published,
+        )
+
+
+async def _start_workflow_locked(
+    request: RunRequest,
+    *,
+    execution_plan: ExecutionPlan | None = None,
+    published_snapshot: PublishedWorkflow | None = None,
+) -> WorkflowResult:
     case = CASES.get(request.case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if execution_plan is not None and (
+        case.source != "jira-service-management" or not case.external_key
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A published Jira workflow can run only on a case linked to a Jira Service Management request.",
+        )
     if _private_local_mode_enabled() and request.include_model_council:
         raise HTTPException(
             status_code=403,
@@ -1339,6 +1420,8 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
                 detail="Jira triage requires an available local or approved Confluence knowledge source. Configure and authorize a knowledge source before processing tickets.",
             )
     config = ProviderConfig.from_env()
+    if execution_plan is not None and f"{config.provider}:{config.model}" != execution_plan.model_ref:
+        raise HTTPException(status_code=409, detail="Active model changed before execution could start.")
     if (
         config.requires_external_ticket_consent
         and not config.external_ticket_inference_allowed
@@ -1355,6 +1438,23 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             status_code=409,
             detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before processing Jira tickets.",
         )
+    if execution_plan is not None:
+        if published_snapshot is None:
+            raise HTTPException(status_code=409, detail="The published workflow snapshot is unavailable.")
+        try:
+            current_plan = compile_published_workflow(
+                published_snapshot,
+                expected_version=execution_plan.version,
+                expected_content_hash=execution_plan.content_hash,
+                provider=config,
+            )
+        except ExecutionPlanError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if current_plan != execution_plan:
+            raise HTTPException(
+                status_code=409,
+                detail="Connector, knowledge, or model bindings changed before execution. Reload and validate the workflow again.",
+            )
     source_snapshot_hash: str | None = None
     if case.source == "jira-service-management":
         try:
@@ -1380,6 +1480,8 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             request.candidate_count,
             request.include_model_council,
             source_snapshot_hash=source_snapshot_hash,
+            agent_role=execution_plan.agent_role if execution_plan else None,
+            agent_instructions=execution_plan.agent_instructions if execution_plan else None,
         )
     except KnowledgeConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1390,13 +1492,31 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     RUNS[result.id] = result
+    if execution_plan is not None:
+        result.workflow_id = execution_plan.workflow_id
+        result.workflow_version = execution_plan.version
+        result.workflow_content_hash = execution_plan.content_hash
+        result.workflow_node_ids = list(execution_plan.node_ids)
     _save_run(
         result,
         audit_event=(
             result.id,
             result.case_id,
             "workflow.started",
-            {"to_status": result.status, "score": result.score},
+            {
+                "to_status": result.status,
+                "score": result.score,
+                **(
+                    {
+                        "workflow_id": execution_plan.workflow_id,
+                        "workflow_version": execution_plan.version,
+                        "workflow_content_hash": execution_plan.content_hash,
+                        "workflow_node_ids": list(execution_plan.node_ids),
+                    }
+                    if execution_plan
+                    else {}
+                ),
+            },
         ),
     )
     if case.source == "jira-service-management":
