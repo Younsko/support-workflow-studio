@@ -38,4 +38,4 @@ To build a fresh image after pulling code, run `docker compose build --pull` and
 - The Setup UI persists its credentials in the local Docker volume. They are not included in the image or committed configuration; protect Docker volume access as local secret access.
 - The workflow-definition registry still uses SQLite, and the app's caches and monitor locks are in process.
 - The app remains unauthenticated and reachable only from the same machine. Do not publish port 8000 on a network interface or expose it through a reverse proxy.
-- This image is an installation preview, not the planned customer runner paired with a hosted control plane. There is no enrollment, heartbeat, secure secret delivery, end-to-end encrypted review, or remote revocation yet.
+- This image is an installation preview, not a production customer runner. Manual enrollment and an opt-in timestamp-only heartbeat are available when the control-plane URL, runner ID, and one-time credential are configured. Secret delivery, end-to-end encrypted review, remote deployment hardening, and automated credential renewal are not implemented.

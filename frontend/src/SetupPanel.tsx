@@ -28,6 +28,11 @@ type SetupValues = {
   model_api_key_configured: boolean
   external_model_disclosure_accepted: boolean
   private_local_mode: boolean
+  control_plane_api_url: string
+  runner_id: string
+  runner_heartbeat_token_configured: boolean
+  runner_heartbeat_interval_seconds: number
+  runner_heartbeat: { enabled: boolean; status: string; last_success_at: string | null; last_error: string | null }
 }
 type JiraOption = { id: string; name: string; key?: string }
 
@@ -41,6 +46,9 @@ const emptySetup: SetupValues = {
   n1_keywords: '', n3_plus_keywords: '', n3_keywords: '', model_provider: 'demo',
   model_name: 'Synthetic workflow model', model_base_url: '', model_api_key_configured: false,
   external_model_disclosure_accepted: false, private_local_mode: false,
+  control_plane_api_url: '', runner_id: '', runner_heartbeat_token_configured: false,
+  runner_heartbeat_interval_seconds: 60,
+  runner_heartbeat: { enabled: false, status: 'not_configured', last_success_at: null, last_error: null },
 }
 
 function modelKeyTarget(provider: string, baseUrl: string) {
@@ -66,9 +74,11 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
   const [token, setToken] = useState('')
   const [modelKey, setModelKey] = useState('')
   const [confluenceToken, setConfluenceToken] = useState('')
+  const [runnerHeartbeatToken, setRunnerHeartbeatToken] = useState('')
   const [checkingConfluence, setCheckingConfluence] = useState(false)
   const [confluenceCheckMessage, setConfluenceCheckMessage] = useState('')
   const [clearModelKey, setClearModelKey] = useState(false)
+  const [clearRunnerHeartbeatToken, setClearRunnerHeartbeatToken] = useState(false)
   const [workspaces, setWorkspaces] = useState<JiraOption[]>([])
   const [queues, setQueues] = useState<JiraOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,7 +89,7 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
   const [currentStep, setCurrentStep] = useState(0)
-  const stepTitles = [t('Ticket source'), t('Approved knowledge'), t('Model provider'), t('Triage and escalation rules'), t('Review settings')]
+  const stepTitles = [t('Ticket source'), t('Approved knowledge'), t('Model provider'), t('Triage and escalation rules'), t('Runner connection'), t('Review settings')]
 
   useEffect(() => {
     request<SetupValues>('/setup')
@@ -165,31 +175,40 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
 
   async function save(event: FormEvent) {
     event.preventDefault()
-    if (currentStep < 4) return
+    if (currentStep < 5) return
     setSaving(true); setError(''); setResult('')
     try {
-      const outcome = await request<{ jira_connected: boolean; jira_queue_sample_count: number; knowledge: { mode: string; available: boolean; source_count: number }; model_provider: string; model_name: string }>('/setup', {
+      const outcome = await request<{ jira_connected: boolean; jira_queue_sample_count: number; knowledge: { mode: string; available: boolean; source_count: number }; model_provider: string; model_name: string; runner_heartbeat: SetupValues['runner_heartbeat'] }>('/setup', {
         method: 'PUT',
-        body: JSON.stringify({ ...values, jira_api_token: token, confluence_api_token: confluenceToken, model_api_key: modelKey, clear_model_api_key: clearModelKey }),
+        body: JSON.stringify({ ...values, jira_api_token: token, confluence_api_token: confluenceToken, model_api_key: modelKey, clear_model_api_key: clearModelKey, runner_heartbeat_token: runnerHeartbeatToken, clear_runner_heartbeat_token: clearRunnerHeartbeatToken }),
       })
       setValues((current) => ({
         ...current,
         jira_token_configured: current.jira_token_configured || Boolean(token),
         model_api_key_configured: clearModelKey ? false : current.model_api_key_configured || Boolean(modelKey),
+        runner_heartbeat_token_configured: clearRunnerHeartbeatToken ? false : current.runner_heartbeat_token_configured || Boolean(runnerHeartbeatToken),
+        runner_heartbeat: outcome.runner_heartbeat,
       }))
       setSavedModelTarget(modelKeyTarget(outcome.model_provider, values.model_base_url))
       setToken('')
       setModelKey('')
       setConfluenceToken('')
+      setRunnerHeartbeatToken('')
       setClearModelKey(false)
+      setClearRunnerHeartbeatToken(false)
       const modelSummary = locale === 'fr'
         ? `Paramètres du modèle enregistrés pour ${outcome.model_provider} · ${outcome.model_name}. Aucun appel au modèle n’a été effectué.`
         : `Model settings saved for ${outcome.model_provider} · ${outcome.model_name}. No model request was sent.`
+      const runnerSummary = outcome.runner_heartbeat.status === 'healthy'
+        ? t('Runner connected to the workspace control plane.')
+        : outcome.runner_heartbeat.status === 'not_configured'
+          ? t('No runner heartbeat is configured.')
+          : outcome.runner_heartbeat.last_error || t('Runner heartbeat is not available yet.')
       setResult(outcome.jira_connected
         ? locale === 'fr'
-          ? `File Jira vérifiée (${outcome.jira_queue_sample_count} ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'} d’exemple). ${outcome.knowledge.mode === 'confluence' && outcome.knowledge.available ? 'Confluence configuré ; les termes minimisés seront envoyés lors du triage.' : outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} sources locales approuvées prêtes.` : 'Configurez une source documentaire locale approuvée ou Confluence avant le triage Jira.'} ${modelSummary}`
-          : `Jira queue verified (${outcome.jira_queue_sample_count} sample ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'}). ${outcome.knowledge.mode === 'confluence' && outcome.knowledge.available ? 'Confluence configured; minimized terms will be sent during triage.' : outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} approved local sources ready.` : 'Configure an approved local source or Confluence before Jira triage.'} ${modelSummary}`
-        : `${t('Local settings saved.') } ${modelSummary}`)
+          ? `File Jira vérifiée (${outcome.jira_queue_sample_count} ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'} d’exemple). ${outcome.knowledge.mode === 'confluence' && outcome.knowledge.available ? 'Confluence configuré ; les termes minimisés seront envoyés lors du triage.' : outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} sources locales approuvées prêtes.` : 'Configurez une source documentaire locale approuvée ou Confluence avant le triage Jira.'} ${modelSummary} ${runnerSummary}`
+          : `Jira queue verified (${outcome.jira_queue_sample_count} sample ticket${outcome.jira_queue_sample_count === 1 ? '' : 's'}). ${outcome.knowledge.mode === 'confluence' && outcome.knowledge.available ? 'Confluence configured; minimized terms will be sent during triage.' : outcome.knowledge.mode === 'local' && outcome.knowledge.available ? `${outcome.knowledge.source_count} approved local sources ready.` : 'Configure an approved local source or Confluence before Jira triage.'} ${modelSummary} ${runnerSummary}`
+        : `${t('Local settings saved.') } ${modelSummary} ${runnerSummary}`)
       onSaved()
     } catch (reason) {
       setError(reason instanceof Error ? t(reason.message) : t('Settings could not be saved'))
@@ -198,7 +217,7 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
 
   const setField = (key: keyof SetupValues) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const raw = event.currentTarget.type === 'checkbox' ? (event.currentTarget as HTMLInputElement).checked : event.currentTarget.value
-    if (key === 'poll_interval_seconds' || key === 'max_auto_triage_per_poll') update(key, Number(raw) as never)
+    if (key === 'poll_interval_seconds' || key === 'max_auto_triage_per_poll' || key === 'runner_heartbeat_interval_seconds') update(key, Number(raw) as never)
     else update(key, raw as never)
   }
   const savedKeyMatchesTarget = savedModelTarget === modelKeyTarget(values.model_provider, values.model_base_url)
@@ -298,20 +317,30 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
               <label>{t('N3 · recurring or engineering review')}<textarea rows={3} value={values.n3_keywords} onChange={setField('n3_keywords')} placeholder="repeated, recurring, multiple users, regression, crash, bug" /></label>
               <div className="setup-notice subtle-notice"><CircleAlert size={15} /> {t('Rules are advisory classification. They do not trigger remediation or skip human review.')}</div>
             </section>}
-            {currentStep === 4 && <section className="setup-card setup-review-card"><div className="setup-card-title"><span>✓</span><div><h3>{t('Configuration summary')}</h3><p>{t('Review these choices before saving. Saving stores local settings; it does not publish or send a support reply.')}</p></div></div>
+            {currentStep === 4 && <section className="setup-card"><div className="setup-card-title"><span>05</span><div><h3>{t('Runner connection')}</h3><p>{t('Optionally connect this installation to its workspace control plane using an enrollment credential.')}</p></div></div>
+              <div className="setup-two"><label>{t('Control-plane URL')}<input readOnly value={values.control_plane_api_url || t('Not configured on this runner')} /></label><label>{t('Enrolled runner ID')}<input readOnly value={values.runner_id || t('Not configured on this runner')} /></label></div>
+              <label>{t('One-time runner enrollment credential')}<input type="password" value={runnerHeartbeatToken} onChange={(event) => { setRunnerHeartbeatToken(event.target.value); setClearRunnerHeartbeatToken(false) }} placeholder={values.runner_heartbeat_token_configured ? t('Credential saved locally — leave blank to keep') : t('Paste the credential issued by the control plane')} autoComplete="new-password" maxLength={128} /></label>
+              {values.runner_heartbeat_token_configured && <label className="setup-checkbox"><input type="checkbox" checked={clearRunnerHeartbeatToken} onChange={(event) => { setClearRunnerHeartbeatToken(event.target.checked); setRunnerHeartbeatToken('') }} /> {t('Disconnect this runner from the control plane')}</label>}
+              <label>{t('Heartbeat interval (seconds)')}<input type="number" min={30} max={3600} value={values.runner_heartbeat_interval_seconds} onChange={setField('runner_heartbeat_interval_seconds')} /></label>
+              <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('The credential is stored only in this machine’s ignored .env file. Heartbeats send the runner ID and credential only; no ticket, draft, or knowledge content is sent.')}</div>
+              <p className="setup-inline-status" role="status">{t('Runner connection status')}: {t(values.runner_heartbeat.status)}{values.runner_heartbeat.last_success_at ? ` · ${t('Last seen')} ${new Date(values.runner_heartbeat.last_success_at).toLocaleString(locale)}` : ''}</p>
+              {values.runner_heartbeat.last_error && <p className="setup-help">{t(values.runner_heartbeat.last_error)}</p>}
+            </section>}
+            {currentStep === 5 && <section className="setup-card setup-review-card"><div className="setup-card-title"><span>✓</span><div><h3>{t('Configuration summary')}</h3><p>{t('Review these choices before saving. Saving stores local settings; it does not publish or send a support reply.')}</p></div></div>
               <dl className="setup-review-list">
                 <div><dt>{t('Ticket source')}</dt><dd>{ticketSummary}</dd></div>
                 <div><dt>{t('Approved knowledge')}</dt><dd>{knowledgeSummary}</dd></div>
                 <div><dt>{t('Model provider')}</dt><dd>{modelNameSummary}<small>{modelConnectionSummary}</small></dd></div>
                 <div><dt>{t('Automatic intake summary')}</dt><dd>{automaticIntakeSummary} · {values.poll_interval_seconds}s · {values.max_auto_triage_per_poll} {t('tickets per poll')}<small>{t('Automatic intake creates drafts only. It never approves or publishes a reply.')}</small></dd></div>
                 <div><dt>{t('Triage and escalation rules')}</dt><dd>{configuredRuleCount ? `${configuredRuleCount} ${t('Rules configured')}` : t('No custom phrases')}</dd></div>
+                <div><dt>{t('Runner connection')}</dt><dd>{values.runner_heartbeat_token_configured && !clearRunnerHeartbeatToken || Boolean(runnerHeartbeatToken) ? t(values.runner_heartbeat.status) : t('Not connected')}</dd></div>
               </dl>
               <div className="setup-notice"><ShieldCheck size={15} /> {t('This local prototype saves setup values to its local .env file. External model calls happen only when you start a workflow.')}</div>
             </section>}
           </div>
           {error && <div className="setup-feedback error" role="alert">{t(error)}</div>}
           {result && <div className="setup-feedback success" role="status"><CheckCircle2 size={16} /> {result}</div>}
-          <div className="setup-actions"><span>{currentStep === 4 ? t('Review settings') : `${t('Step')} ${currentStep + 1} ${t('of')} ${stepTitles.length}`}</span><div className="setup-wizard-buttons"><button className="quiet-button" type="button" onClick={onClose}>{t('Cancel')}</button>{currentStep > 0 && <button className="quiet-button" type="button" onClick={() => setCurrentStep((step) => Math.max(0, step - 1))}>{t('Back')}</button>}{currentStep < 4 ? <button className="primary-button" type="button" onClick={() => setCurrentStep((step) => Math.min(4, step + 1))}>{t('Continue')}</button> : <button className="primary-button" type="submit" disabled={saving}>{saving ? t('Saving settings…') : t('Review & save')}</button>}</div></div>
+          <div className="setup-actions"><span>{currentStep === 5 ? t('Review settings') : `${t('Step')} ${currentStep + 1} ${t('of')} ${stepTitles.length}`}</span><div className="setup-wizard-buttons"><button className="quiet-button" type="button" onClick={onClose}>{t('Cancel')}</button>{currentStep > 0 && <button className="quiet-button" type="button" onClick={() => setCurrentStep((step) => Math.max(0, step - 1))}>{t('Back')}</button>}{currentStep < 5 ? <button className="primary-button" type="button" onClick={() => setCurrentStep((step) => Math.min(5, step + 1))}>{t('Continue')}</button> : <button className="primary-button" type="submit" disabled={saving}>{saving ? t('Saving settings…') : t('Review & save')}</button>}</div></div>
         </>}
       </form>
     </div>
