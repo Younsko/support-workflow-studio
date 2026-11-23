@@ -9,7 +9,7 @@ import sqlite3
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -62,6 +62,79 @@ class RunAuditEvent(BaseModel):
 
 _SAFE_CASE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+@runtime_checkable
+class WorkflowStateStore(Protocol):
+    """Persistence contract consumed by the local workflow runtime.
+
+    Implementations must make each method's documented state transition
+    durable before returning. SQLite is the only implementation today.
+    """
+
+    def check_ready(self) -> None: ...
+    def load_cases(self) -> dict[str, CaseRecord]: ...
+    def load_runs(self) -> dict[str, WorkflowResult]: ...
+    def save_case(self, case: CaseRecord) -> None: ...
+    def save_run(
+        self,
+        run: WorkflowResult,
+        *,
+        audit_event: tuple[str, str, str, dict[str, object]] | None = None,
+        execution_claim: tuple[str, str] | None = None,
+    ) -> None: ...
+    def claim_published_run(
+        self,
+        *,
+        idempotency_key: str,
+        proposed_run_id: str,
+        case_id: str,
+        workflow_id: str,
+        workflow_version: int,
+        workflow_content_hash: str,
+        request_fingerprint: str,
+        lease_owner: str,
+        now: datetime,
+        lease_seconds: int = 300,
+    ) -> dict[str, object]: ...
+    def fail_published_run_claim(
+        self, idempotency_key: str, lease_owner: str, now: datetime
+    ) -> None: ...
+    def renew_published_run_claim(
+        self, idempotency_key: str, lease_owner: str, now: datetime,
+        *, lease_seconds: int = 3600,
+    ) -> bool: ...
+    def record_execution_step(
+        self,
+        *,
+        run_id: str,
+        attempt: int,
+        ordinal: int,
+        stage_id: str,
+        status: str,
+        elapsed_ms: int,
+        recorded_at: datetime | None = None,
+    ) -> None: ...
+    def list_execution_steps(self, run_id: str) -> list[dict[str, object]]: ...
+    def append_run_event(
+        self, run_id: str, case_id: str, event_type: str,
+        metadata: dict[str, object] | None = None,
+    ) -> dict[str, object]: ...
+    def list_run_events(self, run_id: str) -> list[dict[str, object]]: ...
+    def load_monitor_state(self) -> dict[str, object]: ...
+    def save_monitor_state(self, state: dict[str, object]) -> None: ...
+    def claim_run_event_outbox(
+        self, *, lease_owner: str, now: datetime, limit: int = 50,
+        lease_seconds: int = 60,
+    ) -> list[dict[str, object]]: ...
+    def acknowledge_run_event_outbox(
+        self, event_id: str, lease_token: str, now: datetime
+    ) -> bool: ...
+    def release_run_event_outbox(
+        self, event_id: str, lease_token: str, *, now: datetime,
+        available_at: datetime, error_code: str | None = None,
+    ) -> bool: ...
+    def run_event_outbox_counts(self) -> dict[str, int]: ...
 
 
 class LocalStore:
@@ -632,5 +705,5 @@ def configured_store_path() -> Path:
     return Path(os.getenv("SUPPORT_WORKFLOW_DB_PATH", str(default_path))).expanduser()
 
 
-def configured_store() -> LocalStore:
+def configured_store() -> WorkflowStateStore:
     return LocalStore(configured_store_path())

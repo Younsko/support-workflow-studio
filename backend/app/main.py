@@ -59,7 +59,7 @@ from .schemas import (
     WorkflowResult,
     WorkspaceMetrics,
 )
-from .store import LocalStore, configured_store
+from .store import WorkflowStateStore, configured_store
 from .workflow import content_fingerprint, review_edited_draft, run_workflow
 from .workflow_api import configured_workflow_registry
 from .workflow_api import router as workflow_definitions_router
@@ -131,7 +131,7 @@ JIRA_MONITOR_BASELINE_AT: datetime | None = None
 JIRA_AUTO_TRIAGE_BASELINE_AT: datetime | None = None
 JIRA_AUTO_TRIAGE_WAS_ENABLED = False
 WORKFLOW_LOCKS: dict[str, asyncio.Lock] = {}
-STATE_STORE: LocalStore | None = None
+STATE_STORE: WorkflowStateStore | None = None
 SETUP_WRITE_LOCK = asyncio.Lock()
 
 
@@ -208,7 +208,7 @@ def _save_run(
 
 
 def _record_published_execution_stage(
-    store: LocalStore,
+    store: WorkflowStateStore,
     idempotency_key: str,
     lease_owner: str,
     run_id: str,
