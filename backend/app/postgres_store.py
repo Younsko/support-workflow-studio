@@ -63,6 +63,11 @@ class PostgresStore:
                 id TEXT PRIMARY KEY,
                 payload JSONB NOT NULL
             )""",
+            """CREATE TABLE IF NOT EXISTS runner_identity (
+                singleton SMALLINT PRIMARY KEY CHECK(singleton = 1),
+                workspace_id TEXT NOT NULL,
+                runner_id TEXT NOT NULL
+            )""",
             """CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
                 payload JSONB NOT NULL
@@ -130,6 +135,9 @@ class PostgresStore:
             connection.execute(
                 "INSERT INTO support_schema_migrations(version) VALUES (1) ON CONFLICT DO NOTHING"
             )
+            connection.execute(
+                "INSERT INTO support_schema_migrations(version) VALUES (2) ON CONFLICT DO NOTHING"
+            )
 
     @staticmethod
     def _iso(value: datetime | str) -> str:
@@ -148,6 +156,27 @@ class PostgresStore:
     def check_ready(self) -> None:
         with self._connect() as connection:
             connection.execute("SELECT 1").fetchone()
+
+    def bind_runner_identity(self, workspace_id: str, runner_id: str) -> None:
+        if not re.fullmatch(r"[a-f0-9]{32}", workspace_id) or not re.fullmatch(
+            r"[a-f0-9]{32}", runner_id
+        ):
+            raise ValueError("Workspace and runner IDs must be control-plane resource IDs.")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO runner_identity(singleton, workspace_id, runner_id) "
+                "VALUES (1, %s, %s) ON CONFLICT(singleton) DO NOTHING",
+                (workspace_id, runner_id),
+            )
+            current = connection.execute(
+                "SELECT workspace_id, runner_id FROM runner_identity WHERE singleton = 1 FOR UPDATE"
+            ).fetchone()
+            if (
+                current is None
+                or current["workspace_id"] != workspace_id
+                or current["runner_id"] != runner_id
+            ):
+                raise RuntimeError("State database is already bound to another workspace runner.")
 
     def load_cases(self) -> dict[str, CaseRecord]:
         with self._connect() as connection:

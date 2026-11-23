@@ -48,6 +48,68 @@ def test_private_local_mode_rejects_postgres_storage(monkeypatch: pytest.MonkeyP
         configured_store()
 
 
+def test_local_store_is_immutably_bound_to_one_workspace_runner(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    workspace_id = "1" * 32
+    runner_id = "2" * 32
+
+    store.bind_runner_identity(workspace_id, runner_id)
+    LocalStore(tmp_path / "state.sqlite3").bind_runner_identity(workspace_id, runner_id)
+
+    with pytest.raises(RuntimeError, match="another workspace runner"):
+        store.bind_runner_identity("3" * 32, runner_id)
+    with pytest.raises(ValueError, match="control-plane resource IDs"):
+        store.bind_runner_identity("workspace", runner_id)
+
+
+def test_runner_identity_is_bound_at_application_startup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app.workflow_api import WorkflowRegistry
+
+    state_store = LocalStore(tmp_path / "runner-state.sqlite3")
+    workflow_registry = WorkflowRegistry(tmp_path / "runner-workflows.sqlite3")
+    workspace_id = "4" * 32
+    runner_id = "5" * 32
+    monkeypatch.setenv("SUPPORT_WORKSPACE_ID", workspace_id)
+    monkeypatch.setenv("SUPPORT_RUNNER_ID", runner_id)
+    monkeypatch.setattr(main, "configured_store", lambda: state_store)
+    monkeypatch.setattr(main, "configured_workflow_registry", lambda: workflow_registry)
+
+    with TestClient(main.app):
+        pass
+
+    with sqlite3.connect(state_store.path) as connection:
+        assert connection.execute(
+            "SELECT workspace_id, runner_id FROM runner_identity WHERE singleton = 1"
+        ).fetchone() == (workspace_id, runner_id)
+    with sqlite3.connect(workflow_registry.path) as connection:
+        assert connection.execute(
+            "SELECT workspace_id, runner_id FROM workflow_runner_identity WHERE singleton = 1"
+        ).fetchone() == (workspace_id, runner_id)
+
+
+def test_startup_binding_failure_cleans_up_the_global_state_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app.workflow_api import WorkflowRegistry
+
+    state_store = LocalStore(tmp_path / "runner-state.sqlite3")
+    state_store.bind_runner_identity("1" * 32, "2" * 32)
+    workflow_registry = WorkflowRegistry(tmp_path / "runner-workflows.sqlite3")
+    monkeypatch.setenv("SUPPORT_WORKSPACE_ID", "3" * 32)
+    monkeypatch.setenv("SUPPORT_RUNNER_ID", "4" * 32)
+    monkeypatch.setattr(main, "configured_store", lambda: state_store)
+    monkeypatch.setattr(main, "configured_workflow_registry", lambda: workflow_registry)
+
+    with pytest.raises(RuntimeError, match="another workspace runner"), TestClient(
+        main.app
+    ):
+        pass
+
+    assert main.STATE_STORE is None
+
+
 def test_configured_environment_file_uses_persistent_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

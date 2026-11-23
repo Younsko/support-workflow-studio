@@ -49,6 +49,7 @@ from .knowledge import (
     knowledge_status,
 )
 from .providers import ProviderConfig, ProviderError, model_destination_scope
+from .runner_identity import RunnerIdentity
 from .schemas import (
     CaseRecord,
     DecisionRequest,
@@ -639,19 +640,29 @@ async def _jira_monitor_loop() -> None:
 async def lifespan(_: FastAPI):
     global STATE_STORE
     _validate_private_local_mode()
-    STATE_STORE = configured_store()
-    CASES.update(STATE_STORE.load_cases())
-    RUNS.update(STATE_STORE.load_runs())
-    _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
-    monitor = asyncio.create_task(_jira_monitor_loop())
+    monitor: asyncio.Task[None] | None = None
     try:
+        STATE_STORE = configured_store()
+        runner_identity = RunnerIdentity.from_env()
+        if runner_identity is not None:
+            STATE_STORE.bind_runner_identity(
+                runner_identity.workspace_id, runner_identity.runner_id
+            )
+            configured_workflow_registry().bind_runner_identity(
+                runner_identity.workspace_id, runner_identity.runner_id
+            )
+        CASES.update(STATE_STORE.load_cases())
+        RUNS.update(STATE_STORE.load_runs())
+        _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
+        monitor = asyncio.create_task(_jira_monitor_loop())
         yield
     finally:
-        monitor.cancel()
-        try:
-            await monitor
-        except asyncio.CancelledError:
-            pass
+        if monitor is not None:
+            monitor.cancel()
+            try:
+                await monitor
+            except asyncio.CancelledError:
+                pass
         STATE_STORE = None
 
 

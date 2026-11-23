@@ -22,7 +22,7 @@ def store() -> PostgresStore:
         connection.execute(
             """TRUNCATE TABLE cases, runs, published_run_claims,
                 workflow_execution_steps, run_event_outbox, run_events,
-                monitor_state RESTART IDENTITY CASCADE"""
+                monitor_state, runner_identity RESTART IDENTITY CASCADE"""
         )
     return value
 
@@ -80,7 +80,19 @@ def test_postgres_schema_is_repeatable_and_cases_runs_survive_reopen(store: Post
         versions = connection.execute(
             "SELECT version FROM support_schema_migrations ORDER BY version"
         ).fetchall()
-    assert [row["version"] for row in versions] == [1]
+    assert [row["version"] for row in versions] == [1, 2]
+
+
+def test_postgres_store_identity_binding_rejects_cross_workspace_reuse(
+    store: PostgresStore,
+) -> None:
+    workspace_id = "9" * 32
+    runner_id = "a" * 32
+    store.bind_runner_identity(workspace_id, runner_id)
+    PostgresStore(store.dsn).bind_runner_identity(workspace_id, runner_id)
+
+    with pytest.raises(RuntimeError, match="another workspace runner"):
+        store.bind_runner_identity("b" * 32, runner_id)
 
 
 def test_configured_store_selects_postgres_when_url_is_set(

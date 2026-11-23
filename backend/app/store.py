@@ -62,6 +62,7 @@ class RunAuditEvent(BaseModel):
 
 _SAFE_CASE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_SAFE_CONTROL_PLANE_ID = re.compile(r"^[a-f0-9]{32}$")
 
 
 @runtime_checkable
@@ -74,6 +75,7 @@ class WorkflowStateStore(Protocol):
     """
 
     def check_ready(self) -> None: ...
+    def bind_runner_identity(self, workspace_id: str, runner_id: str) -> None: ...
     def load_cases(self) -> dict[str, CaseRecord]: ...
     def load_runs(self) -> dict[str, WorkflowResult]: ...
     def save_case(self, case: CaseRecord) -> None: ...
@@ -145,6 +147,13 @@ class LocalStore:
         with closing(self._connect()) as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS runner_identity (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    workspace_id TEXT NOT NULL,
+                    runner_id TEXT NOT NULL
+                )"""
             )
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
@@ -235,6 +244,30 @@ class LocalStore:
         """Confirm the local state database can accept a lightweight read."""
         with closing(self._connect()) as connection:
             connection.execute("SELECT 1").fetchone()
+
+    def bind_runner_identity(self, workspace_id: str, runner_id: str) -> None:
+        """Bind this dedicated state database to exactly one control-plane runner."""
+        if not _SAFE_CONTROL_PLANE_ID.fullmatch(workspace_id) or not _SAFE_CONTROL_PLANE_ID.fullmatch(runner_id):
+            raise ValueError("Workspace and runner IDs must be control-plane resource IDs.")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                "SELECT workspace_id, runner_id FROM runner_identity WHERE singleton = 1"
+            ).fetchone()
+            if current is None:
+                connection.execute(
+                    "INSERT INTO runner_identity(singleton, workspace_id, runner_id) VALUES (1, ?, ?)",
+                    (workspace_id, runner_id),
+                )
+            elif current["workspace_id"] != workspace_id or current["runner_id"] != runner_id:
+                raise RuntimeError("State database is already bound to another workspace runner.")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def load_cases(self) -> dict[str, CaseRecord]:
         with closing(self._connect()) as connection:

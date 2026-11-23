@@ -41,6 +41,21 @@ def test_workflow_draft_survives_registry_reopen(tmp_path: Path) -> None:
     assert bundle["published"] == []
 
 
+def test_workflow_registry_is_bound_to_one_workspace_runner(tmp_path: Path) -> None:
+    path = tmp_path / "state.sqlite3"
+    registry = WorkflowRegistry(path)
+    workspace_id = "6" * 32
+    runner_id = "7" * 32
+
+    registry.bind_runner_identity(workspace_id, runner_id)
+    WorkflowRegistry(path).bind_runner_identity(workspace_id, runner_id)
+
+    with pytest.raises(RuntimeError, match="another workspace runner"):
+        registry.bind_runner_identity("8" * 32, runner_id)
+    with pytest.raises(ValueError, match="control-plane resource IDs"):
+        registry.bind_runner_identity(workspace_id, "runner")
+
+
 def test_registry_rejects_stale_draft_revision(tmp_path: Path) -> None:
     registry = WorkflowRegistry(tmp_path / "state.sqlite3")
     definition = draft()
