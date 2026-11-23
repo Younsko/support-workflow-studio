@@ -34,6 +34,10 @@ type RunAuditEvent = {
   occurred_at: string; from_status?: string; to_status?: string
   decision_version?: number; score?: number; outcome?: string
 }
+type ExecutionStep = {
+  run_id: string; attempt: number; ordinal: number; stage_id: string
+  status: string; elapsed_ms: number; recorded_at: string
+}
 type Health = { status: string; provider_mode: string; provider: string; model: string; credentials_configured: boolean; private_local_mode: boolean }
 type WorkspaceMetrics = { open_cases: number; total_cases: number; workflow_runs: number; live_model_runs: number; drafts_passing_gate: number; reviewer_approved_runs: number; reviewer_edited_runs: number; reviewer_rejected_runs: number; public_replies_published: number; median_triage_seconds: number | null }
 type ProductSignal = { category: string; cases: { id: string; title: string; source: string; confidence: number }[] }
@@ -67,6 +71,7 @@ export default function App() {
   const [cases, setCases] = useState<SupportCase[]>([])
   const [selectedId, setSelectedId] = useState('SUP-4821')
   const [run, setRun] = useState<Run | null>(null)
+  const [executionRecord, setExecutionRecord] = useState<{ runId: string; steps: ExecutionStep[] } | null>(null)
   const [runAuditEvents, setRunAuditEvents] = useState<RunAuditEvent[]>([])
   const [runAuditError, setRunAuditError] = useState(false)
   const [runAuditLoading, setRunAuditLoading] = useState(false)
@@ -93,6 +98,11 @@ export default function App() {
   const [decisionBusy, setDecisionBusy] = useState(false)
   const publishedRunIdempotencyKey = useRef<string | null>(null)
   const selected = cases.find((item) => item.id === selectedId)
+  const executionSteps = executionRecord && executionRecord.runId === run?.id ? executionRecord.steps : []
+  const latestExecutionAttempt = executionSteps.reduce((latest, step) => Math.max(latest, step.attempt), 0)
+  const latestExecutionSteps = new Map(
+    executionSteps.filter((step) => step.attempt === latestExecutionAttempt).map((step) => [step.ordinal, step]),
+  )
 const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
   ['local', 'confluence'].includes(integrations?.knowledge.mode ?? '') && integrations?.knowledge.configured && integrations.knowledge.available
 )
@@ -123,6 +133,15 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
       .catch(() => { if (!cancelled) { setRunAuditEvents([]); setRunAuditError(true); setRunAuditLoading(false) } })
     return () => { cancelled = true }
   }, [run?.id, runAuditRefresh])
+
+  useEffect(() => {
+    if (!run?.workflow_id) { setExecutionRecord(null); return }
+    let cancelled = false
+    api<ExecutionStep[]>(`/workflows/${encodeURIComponent(run.id)}/execution-steps`)
+      .then((steps) => { if (!cancelled) setExecutionRecord({ runId: run.id, steps }) })
+      .catch(() => { if (!cancelled) setExecutionRecord({ runId: run.id, steps: [] }) })
+    return () => { cancelled = true }
+  }, [run?.id, run?.workflow_id])
 
   const filteredCases = useMemo(() => cases.filter((item) =>
     `${item.id} ${item.title} ${item.requester} ${item.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
@@ -390,8 +409,12 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
 
                     {run.verifier_findings.length > 0 && <section className="verifier-panel" aria-labelledby="verifier-title"><div className="section-label" id="verifier-title">{tr('INDEPENDENT VERIFIER')} · {run.provider_mode === 'live' ? tr('LIVE MODEL') : tr('DEMO MODE')}</div><ul>{run.verifier_findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul><small>{tr('The verifier cannot edit or approve the response. Findings are advisory and visible for human review.')}</small></section>}
 
+                    {run.workflow_id && executionSteps.length > 0 && <div className="execution-record-heading"><span>{tr('Execution record')}</span><small>{tr('Saved stage checkpoints')} · {tr('Attempt')} {latestExecutionAttempt}</small></div>}
                     <div className="process-track">
-                      {run.stages.map((stage, index) => <div className={`process-step ${stage.status}`} key={stage.id}><div className="step-marker">{stage.status === 'complete' ? <Check size={12} /> : stage.status === 'pending' ? <UserRound size={12} /> : <span>{index + 1}</span>}</div><div className="step-copy"><b>{stage.label}</b><small>{stage.actor}</small><small className="step-detail">{stage.detail}</small></div>{index < run.stages.length - 1 && <div className="step-line" />}</div>)}
+                      {run.stages.map((stage, index) => {
+                        const stageStep = latestExecutionSteps.get(index)
+                        return <div className={`process-step ${stage.status}`} key={`${stage.id}-${index}`}><div className="step-marker">{stage.status === 'complete' ? <Check size={12} /> : stage.status === 'pending' ? <UserRound size={12} /> : <span>{index + 1}</span>}</div><div className="step-copy"><b>{stage.label}</b><small>{stage.actor}</small><small className="step-detail">{stage.detail}</small>{stageStep && <small className="step-checkpoint"><Clock3 size={11} /> {stageStep.elapsed_ms.toLocaleString(locale === 'fr' ? 'fr-FR' : 'en-US')} ms</small>}</div>{index < run.stages.length - 1 && <div className="step-line" />}</div>
+                      })}
                     </div>
 
                     <section className="run-audit" aria-labelledby="run-audit-title">

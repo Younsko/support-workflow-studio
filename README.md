@@ -48,7 +48,7 @@ Le canvas permet d’enregistrer et de publier des versions immuables. Aujourd�
 ## Ce que contient le prototype
 
 - **Canvas visuel** : étapes configurables, palette, inspecteur, validation, historique des versions et création d’un brouillon depuis une version publiée.
-- **Exécution bornée** : compilation stricte du flux de démarrage, vérification des empreintes et des connexions, rattachement à la version publiée et clé d’idempotence locale pour éviter de relancer un run déjà terminé après un retry.
+- **Exécution bornée** : compilation stricte du flux de démarrage, vérification des empreintes et des connexions, rattachement à la version publiée et clé d’idempotence locale pour éviter de relancer un run déjà terminé après un retry. La chronologie affiche aussi les durées enregistrées par étape pour les runs publiés.
 - **Orchestration de support** : qualification N1 à N3+, pistes d’investigation spécialisées, planification avec boucle architecte/critique/révision et seuil de qualité, vérification indépendante et éléments de preuve.
 - **Sources de connaissance** : dossier local dont les fichiers sont explicitement autorisés ou recherche Confluence en lecture seule avec consentement et périmètre définis.
 - **Modèles** : mode déterministe de démonstration, Ollama local, API compatibles OpenAI et Anthropic selon la configuration locale.
