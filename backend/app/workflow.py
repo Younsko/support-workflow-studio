@@ -43,10 +43,10 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def content_fingerprint(summary: str, description: str) -> str:
-    """Fingerprint the exact ticket text reviewed by this workflow run."""
+def content_fingerprint(summary: str, description: str, status: str = "") -> str:
+    """Fingerprint the Jira fields currently refreshed before approval and publish."""
     payload = json.dumps(
-        [summary, description], ensure_ascii=False, separators=(",", ":")
+        [summary, description, status], ensure_ascii=False, separators=(",", ":")
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -1064,7 +1064,7 @@ async def run_workflow(
             model_name=config.model if config.live else "Synthetic demo · no model calls",
             started_at=_now(),
             elapsed_ms=int((time.perf_counter() - started) * 1000),
-            source_snapshot_hash=content_fingerprint(case.title, case.body),
+            source_snapshot_hash=content_fingerprint(case.title, case.body, case.status),
             score=plan_score,
             rounds=rounds,
             candidate_count=0,
@@ -1329,7 +1329,7 @@ async def run_workflow(
         model_name=config.model if config.live else "Synthetic demo · no model calls",
         started_at=_now(),
         elapsed_ms=int((time.perf_counter() - started) * 1000),
-        source_snapshot_hash=content_fingerprint(case.title, case.body),
+        source_snapshot_hash=content_fingerprint(case.title, case.body, case.status),
         score=score,
         rounds=rounds,
         revision_count=revision_count,

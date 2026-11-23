@@ -1510,10 +1510,13 @@ def _matches_reviewed_ticket(
     return (
         isinstance(summary, str)
         and isinstance(description, str)
+        and isinstance(latest_details.get("status"), str)
         and summary == case.title
         and description == case.body
+        and latest_details["status"] == case.status
         and bool(result.source_snapshot_hash)
-        and content_fingerprint(summary, description) == result.source_snapshot_hash
+        and content_fingerprint(summary, description, latest_details["status"])
+        == result.source_snapshot_hash
     )
 
 

@@ -372,6 +372,7 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch, tmp_pat
     ticket_details = {
         "summary": "VPN connection drops",
         "description": "The VPN disconnected during a support call. Please advise.",
+        "status": "Open",
     }
 
     published = []
@@ -452,6 +453,7 @@ def test_stale_jira_ticket_cannot_be_approved_or_re_reviewed(monkeypatch) -> Non
     ticket_details = {
         "summary": "Synthetic stale approval case",
         "description": "A synthetic VPN issue for freshness testing.",
+        "status": "Open",
     }
 
     class FakeAdapter:
@@ -469,7 +471,7 @@ def test_stale_jira_ticket_cannot_be_approved_or_re_reviewed(monkeypatch) -> Non
     run = client.post(
         "/api/workflows", json={"case_id": "DEMO-85", "candidate_count": 1}
     ).json()
-    ticket_details["description"] = "The synthetic ticket changed after triage."
+    ticket_details["status"] = "In Progress"
 
     approve = client.post(
         f"/api/workflows/{run['id']}/decision",
@@ -897,6 +899,7 @@ def test_unknown_jira_comment_outcome_blocks_automatic_retry(monkeypatch, tmp_pa
             return {
                 "summary": "Synthetic VPN disconnect",
                 "description": "VPN disconnected.",
+                "status": "Open",
             }
 
         async def publish_public_reply(self, _issue_key, _body):
@@ -1703,6 +1706,7 @@ def test_approved_ticket_reply_publishes_only_after_approval_and_once(monkeypatc
     ticket_details = {
         "summary": "Synthetic VPN disconnect",
         "description": "The VPN disconnected during a synthetic support call.",
+        "status": "Open",
     }
     published: list[tuple[str, str]] = []
 
