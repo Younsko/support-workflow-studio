@@ -427,6 +427,73 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch, tmp_pat
     assert events[3]["outcome"] == "published"
 
 
+def test_stale_jira_ticket_cannot_be_approved_or_re_reviewed(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    configure_test_knowledge(monkeypatch)
+    monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", "synthetic-token")
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "1")
+    monkeypatch.setenv("JSM_QUEUE_ID", "2")
+    CASES["DEMO-85"] = CaseRecord(
+        id="DEMO-85",
+        external_key="DEMO-85",
+        source="jira-service-management",
+        title="Synthetic stale approval case",
+        requester="Synthetic Requester",
+        channel="Jira Service Management",
+        created_at="2026-11-22T09:00:00Z",
+        priority="High",
+        category="Connectivity",
+        status="Open",
+        body="A synthetic VPN issue for freshness testing.",
+        impact="Synthetic single-user example",
+    )
+    ticket_details = {
+        "summary": "Synthetic stale approval case",
+        "description": "A synthetic VPN issue for freshness testing.",
+    }
+
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return dict(ticket_details)
+
+        async def publish_public_reply(self, _issue_key, _body):
+            raise AssertionError("No write is expected in a freshness test")
+
+    from app import main
+
+    monkeypatch.setattr(
+        main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter()
+    )
+    run = client.post(
+        "/api/workflows", json={"case_id": "DEMO-85", "candidate_count": 1}
+    ).json()
+    ticket_details["description"] = "The synthetic ticket changed after triage."
+
+    approve = client.post(
+        f"/api/workflows/{run['id']}/decision",
+        json={"decision": "approve", "expected_version": run["approval_version"]},
+    )
+    assert approve.status_code == 409
+    assert "changed after" in approve.json()["detail"].lower()
+
+    edit = client.post(
+        f"/api/workflows/{run['id']}/decision",
+        json={
+            "decision": "edit",
+            "expected_version": run["approval_version"],
+            "edited_draft": "A revised synthetic reply.",
+        },
+    )
+    assert edit.status_code == 409
+    assert "changed after" in edit.json()["detail"].lower()
+
+    current = client.get(f"/api/workflows/latest/DEMO-85").json()
+    assert current["status"] == "awaiting_human"
+    assert current["approval_version"] == run["approval_version"]
+
+
 def test_jira_queue_read_maps_only_bounded_queue_fields(monkeypatch) -> None:
     class FakeResponse:
         def raise_for_status(self):

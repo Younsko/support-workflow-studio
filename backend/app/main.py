@@ -1446,15 +1446,7 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMRequestError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if (
-        latest_details["summary"] != case.title
-        or latest_details["description"] != case.body
-        or not result.source_snapshot_hash
-        or content_fingerprint(
-            latest_details["summary"], latest_details["description"]
-        )
-        != result.source_snapshot_hash
-    ):
+    if not _matches_reviewed_ticket(result, case, latest_details):
         raise HTTPException(
             status_code=409,
             detail="The Jira request changed after this workflow reviewed it. Sync and rerun triage, then approve the new draft before publishing.",
@@ -1508,6 +1500,50 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
 
 
+def _matches_reviewed_ticket(
+    result: WorkflowResult,
+    case: CaseRecord,
+    latest_details: dict[str, object],
+) -> bool:
+    summary = latest_details.get("summary")
+    description = latest_details.get("description")
+    return (
+        isinstance(summary, str)
+        and isinstance(description, str)
+        and summary == case.title
+        and description == case.body
+        and bool(result.source_snapshot_hash)
+        and content_fingerprint(summary, description) == result.source_snapshot_hash
+    )
+
+
+async def _require_current_ticket_snapshot(
+    result: WorkflowResult,
+    case: CaseRecord,
+) -> None:
+    """Fail closed when Jira content is no longer the content reviewed by this run."""
+    if case.source != "jira-service-management":
+        return
+    if not case.external_key or not result.source_snapshot_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="This Jira run has no verified source snapshot. Sync and rerun triage before approval.",
+        )
+    try:
+        latest_details = await create_itsm_adapter(
+            "jira-service-management"
+        ).get_request_details(case.external_key)
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not _matches_reviewed_ticket(result, case, latest_details):
+        raise HTTPException(
+            status_code=409,
+            detail="The Jira request changed after this workflow reviewed it. Sync and rerun triage before approving or re-reviewing the draft.",
+        )
+
+
 @app.get("/api/workflows/latest/{case_id}", response_model=WorkflowResult)
 async def latest_workflow(case_id: str) -> WorkflowResult:
     result = next(
@@ -1551,6 +1587,11 @@ async def _decide_locked(
             status_code=409,
             detail="The draft changed after this action was prepared. Review the latest draft and submit your decision again.",
         )
+    case = CASES.get(result.case_id)
+    if request.decision in {"approve", "edit"}:
+        if case is None:
+            raise HTTPException(status_code=404, detail="Workflow case not found")
+        await _require_current_ticket_snapshot(result, case)
     if request.decision == "approve" and (result.score < 9 or not result.draft.strip()):
         raise HTTPException(
             status_code=409,
@@ -1564,9 +1605,7 @@ async def _decide_locked(
                 status_code=409,
                 detail="The bounded revision limit is reached. Start a new workflow before further edits.",
             )
-        case = CASES.get(result.case_id)
-        if case is None:
-            raise HTTPException(status_code=404, detail="Workflow case not found")
+        assert case is not None
         config = ProviderConfig.from_env()
         if (
             config.requires_external_ticket_consent
