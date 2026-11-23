@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 from app.control_plane.api import create_control_plane_app, get_control_plane_store
 from app.control_plane.auth import Principal, current_principal
+from fastapi.testclient import TestClient
 
 
 def test_control_plane_api_requires_oidc_bearer_before_workspace_access(
