@@ -32,7 +32,7 @@ def signing_material():
         get_signing_key_from_jwt=lambda _: SimpleNamespace(key=key.public_key())
     )
     config = OIDCConfig(
-        issuer="https://identity.example.test",
+        issuer="https://identity.example.test/",
         audience="support-workflow-api",
         jwks_uri="https://identity.example.test/.well-known/jwks.json",
     )
