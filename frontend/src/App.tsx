@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Activity, ArrowDownRight, Check, CheckCheck, ChevronDown,
   CircleHelp, Clock3, FileSearch, Inbox, Layers3, LockKeyhole, MessageSquareText,
-  MoreHorizontal, Play, Plus, Search, ShieldCheck, Sparkles, Target, UserRound, Copy,
+  MoreHorizontal, Play, Plus, Search, ShieldCheck, Sparkles, Target, UserRound, Copy, Waypoints,
   CloudDownload,
   Settings2, Languages, X,
 } from 'lucide-react'
@@ -257,7 +257,7 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
   return (
     <div className="app-shell" lang={locale}>
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark"><Layers3 size={19} /></div><div><strong>Support workflow</strong><span>Studio</span></div></div>
+        <div className="brand"><div className="brand-mark"><Waypoints size={19} /></div><div><strong>Support Workflow</strong><span>Studio</span></div></div>
         <div className="workspace-switch"><span className="workspace-avatar">{integrations?.jira_configured ? 'J' : 'L'}</span><span><b>{tr(integrations?.jira_configured ? 'Support workspace' : 'Local lab')}</b><small>{integrations?.jira_configured ? 'Jira Service Management' : tr('Synthetic workspace')}</small></span><ChevronDown size={15} /></div>
         <div className="nav-section-label">{tr('WORKSPACE')}</div>
         <nav className="side-nav">
@@ -273,10 +273,10 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
       </aside>
 
       <main className="main-area">
-        <header className="topbar">
-          <div className="breadcrumbs"><span>{tr('Workspace')}</span><span className="crumb-slash">/</span><b>{activeSection === 'workflow' ? tr('Workflow studio') : activeSection === 'signals' ? tr('Product signals') : tr('Support inbox')}</b></div>
+        {activeSection !== 'workflow' && <header className="topbar">
+          <div className="breadcrumbs"><span>{tr('Workspace')}</span><span className="crumb-slash">/</span><b>{activeSection === 'signals' ? tr('Product signals') : tr('Support inbox')}</b></div>
           <div className="topbar-right">{integrations?.private_local_mode && <span className="provider-pill live"><span className="status-dot" />{tr('PRIVATE LOCAL MODE')}</span>}<span className={`provider-pill ${health?.provider_mode === 'live' ? 'live' : ''}`}><span className="status-dot" />{health?.provider_mode === 'live' ? `${health.provider} · ${health.model}` : tr('Demo mode')}</span>{integrations?.jira_configured && <><span className={`provider-pill ${integrations.jira_monitor.enabled ? 'live' : ''}`}><span className="status-dot" />{integrations.jira_monitor.enabled ? `${tr('Jira monitor')} · ${integrations.jira_monitor.auto_triage_enabled ? tr('auto-triage on') : tr('review to triage')}` : tr('Jira monitor starting')}</span><span className={`provider-pill ${integrations.knowledge.configured && integrations.knowledge.available ? 'live' : ''}`}><span className="status-dot" />{integrations.knowledge.configured && integrations.knowledge.available ? integrations.knowledge.mode === 'confluence' ? tr('Confluence knowledge ready') : `${integrations.knowledge.source_count} ${tr('local KB sources')}` : tr('Knowledge setup required')}</span></>}<button className="language-switch" type="button" onClick={() => setLocale((current) => current === 'en' ? 'fr' : 'en')} aria-label={locale === 'en' ? 'Switch language to French' : 'Changer la langue en anglais'} title={locale === 'en' ? 'Change language' : 'Changer de langue'}><Languages size={15} /><span>{locale.toUpperCase()}</span></button><button className="icon-button" title={tr('Help')} aria-label={tr('Help')}><CircleHelp size={18} /></button><div className="top-avatar">SR</div></div>
-        </header>
+        </header>}
 
         {activeSection === 'workflow' && <div id="workflow-studio" className="workflow-studio-page"><WorkflowBuilder locale={locale} onLocaleChange={setLocale} onOpenConnections={() => setShowSetup(true)} connectionsRevision={setupRevision} /></div>}
 
