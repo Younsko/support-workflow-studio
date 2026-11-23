@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from fastapi.testclient import TestClient
+
 from app.control_plane.api import create_control_plane_app, get_control_plane_store
 from app.control_plane.auth import Principal, current_principal
-from fastapi.testclient import TestClient
 
 
 def test_control_plane_api_requires_oidc_bearer_before_workspace_access(
@@ -20,6 +21,26 @@ def test_control_plane_api_requires_oidc_bearer_before_workspace_access(
     assert create.status_code == 401
     assert client.get("/health/live").status_code == 200
     assert client.get("/docs").status_code == 404
+
+
+def test_public_auth_config_contains_only_browser_safe_oidc_values(monkeypatch) -> None:
+    monkeypatch.setenv("CONTROL_PLANE_OIDC_ISSUER", "https://login.example.test/")
+    monkeypatch.setenv("CONTROL_PLANE_OIDC_AUDIENCE", "private-api-audience")
+    monkeypatch.setenv(
+        "CONTROL_PLANE_OIDC_JWKS_URI", "https://login.example.test/keys"
+    )
+    monkeypatch.setenv("CONTROL_PLANE_OIDC_CLIENT_ID", "public-browser-client")
+
+    response = TestClient(create_control_plane_app()).get("/api/v1/auth/config")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "configured": True,
+        "issuer": "https://login.example.test",
+        "audience": "private-api-audience",
+        "client_id": "public-browser-client",
+    }
+    assert "jwks" not in response.text.casefold()
 
 
 def test_audit_limit_is_rejected_at_the_http_boundary() -> None:

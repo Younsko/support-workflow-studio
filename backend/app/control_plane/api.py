@@ -15,12 +15,23 @@ import secrets
 import threading
 import unicodedata
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .auth import Principal, current_principal
+from .auth import OIDCConfig, Principal, current_principal
 from .store import (
     InvitationInvalid,
     MembershipDenied,
@@ -200,6 +211,32 @@ def create_control_plane_app(
     ) -> dict[str, str]:
         control_store.check_ready()
         return {"status": "ready"}
+
+    @app.get("/api/v1/auth/config")
+    def public_auth_config() -> dict[str, object]:
+        try:
+            oidc = OIDCConfig.from_env()
+        except RuntimeError:
+            return {
+                "configured": False,
+                "issuer": None,
+                "audience": None,
+                "client_id": None,
+            }
+        client_id = os.getenv("CONTROL_PLANE_OIDC_CLIENT_ID", "").strip()
+        if not client_id or len(client_id) > 256:
+            return {
+                "configured": False,
+                "issuer": oidc.issuer,
+                "audience": oidc.audience,
+                "client_id": None,
+            }
+        return {
+            "configured": True,
+            "issuer": oidc.issuer,
+            "audience": oidc.audience,
+            "client_id": client_id,
+        }
 
     @app.get("/api/v1/me")
     def me(
@@ -384,6 +421,38 @@ def create_control_plane_app(
     ) -> dict[str, object]:
         response.headers["Cache-Control"] = "no-store"
         return control_store.record_runner_heartbeat(runner_id, runner_token)
+
+    static_dir = Path(__file__).resolve().parents[1] / "static"
+
+    @app.get("/", include_in_schema=False)
+    def control_plane_home() -> Response:
+        page = static_dir / "control-plane.html"
+        if not page.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="Control-plane UI is not built. Run the frontend production build.",
+            )
+        return FileResponse(page, headers={"Cache-Control": "no-store"})
+
+    app.mount(
+        "/assets",
+        StaticFiles(directory=static_dir / "assets", check_dir=False),
+        name="control-plane-assets",
+    )
+
+    @app.middleware("http")
+    async def secure_browser_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; connect-src 'self' https:; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self' https:",
+        )
+        return response
 
     return app
 
