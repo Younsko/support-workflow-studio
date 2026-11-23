@@ -17,7 +17,7 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .auth import Principal, current_principal
@@ -25,6 +25,7 @@ from .store import (
     InvitationInvalid,
     MembershipDenied,
     PostgresControlPlaneStore,
+    RunnerCredentialInvalid,
     WorkspaceConflict,
     WorkspaceNotFound,
 )
@@ -87,6 +88,20 @@ class MemberRoleChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role: Role
+
+
+class RunnerEnrollmentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Runner name cannot be blank.")
+        return value
 
 
 def _slug_from_name(name: str) -> str:
@@ -167,6 +182,12 @@ def create_control_plane_app(
     @app.exception_handler(InvitationInvalid)
     async def invitation_invalid(_: Request, exc: InvitationInvalid) -> Response:
         return Response(content=str(exc), status_code=400, media_type="text/plain")
+
+    @app.exception_handler(RunnerCredentialInvalid)
+    async def runner_credential_invalid(
+        _: Request, exc: RunnerCredentialInvalid
+    ) -> Response:
+        return Response(content=str(exc), status_code=401, media_type="text/plain")
 
     @app.get("/health/live")
     def live() -> dict[str, str]:
@@ -310,6 +331,54 @@ def create_control_plane_app(
         return control_store.list_audit_events(
             workspace_id, principal.subject, limit=limit
         )
+
+    @app.post("/api/v1/workspaces/{workspace_id}/runners", status_code=201)
+    def create_runner_enrollment(
+        workspace_id: str,
+        body: RunnerEnrollmentCreate,
+        response: Response,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        token = secrets.token_urlsafe(32)
+        runner = control_store.create_runner_enrollment(
+            workspace_id, principal, name=body.name, token=token
+        )
+        return {**runner, "token": token}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/runners")
+    def list_runners(
+        workspace_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> list[dict[str, object]]:
+        return control_store.list_runners(workspace_id, principal.subject)
+
+    @app.delete(
+        "/api/v1/workspaces/{workspace_id}/runners/{runner_id}", status_code=204
+    )
+    def revoke_runner(
+        workspace_id: str,
+        runner_id: str,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> Response:
+        control_store.revoke_runner(workspace_id, runner_id, principal)
+        return Response(status_code=204)
+
+    @app.post("/api/v1/runners/{runner_id}/heartbeat")
+    def runner_heartbeat(
+        runner_id: str,
+        response: Response,
+        runner_token: str = Header(
+            alias="X-Runner-Token", min_length=32, max_length=128
+        ),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        response.headers["Cache-Control"] = "no-store"
+        return control_store.record_runner_heartbeat(runner_id, runner_token)
 
     return app
 

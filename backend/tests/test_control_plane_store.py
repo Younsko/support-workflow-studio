@@ -10,6 +10,7 @@ from app.control_plane.store import (
     InvitationInvalid,
     MembershipDenied,
     PostgresControlPlaneStore,
+    RunnerCredentialInvalid,
     WorkspaceConflict,
     WorkspaceNotFound,
 )
@@ -223,6 +224,74 @@ def test_only_owner_can_grant_owner_and_last_owner_cannot_be_removed(
     assert [
         item["subject"] for item in store.list_members(workspace_id, admin.subject)
     ] == [admin.subject]
+
+
+def test_runner_enrollment_keeps_only_token_hash_and_revocation_stops_heartbeats(
+    store, owner
+) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(UTC)
+
+    runner = store.create_runner_enrollment(
+        workspace_id, owner, name="Private runner", token=token, now=now
+    )
+    runner_id = str(runner["id"])
+    listed = store.list_runners(workspace_id, owner.subject)
+    assert listed[0]["id"] == runner_id
+    assert "token" not in listed[0]
+    assert token not in repr(listed)
+
+    with pytest.raises(RunnerCredentialInvalid):
+        store.record_runner_heartbeat(
+            runner_id, secrets.token_urlsafe(32), now=now + timedelta(seconds=5)
+        )
+
+    heartbeat = store.record_runner_heartbeat(
+        runner_id, token, now=now + timedelta(seconds=10)
+    )
+    assert heartbeat["runner_id"] == runner_id
+    assert listed[0]["last_heartbeat_at"] is None
+    store.revoke_runner(
+        workspace_id, runner_id, owner, now=now + timedelta(seconds=20)
+    )
+    with pytest.raises(RunnerCredentialInvalid):
+        store.record_runner_heartbeat(
+            runner_id, token, now=now + timedelta(seconds=30)
+        )
+    audit = store.list_audit_events(workspace_id, owner.subject)
+    assert [item["event_type"] for item in audit[:2]] == [
+        "runner.revoked",
+        "runner.enrollment_created",
+    ]
+
+
+def test_runner_enrollment_requires_workspace_admin(store, owner) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    now = datetime.now(UTC)
+    builder = Principal(subject="oidc|builder", email="builder@example.test")
+    token = secrets.token_urlsafe(32)
+    invite = store.create_invitation(
+        workspace_id,
+        owner,
+        email=builder.email,
+        role="Builder",
+        token=token,
+        expires_at=now + timedelta(hours=1),
+        now=now,
+    )
+    store.redeem_invitation(str(invite["id"]), token, builder, now=now)
+
+    with pytest.raises(MembershipDenied):
+        store.create_runner_enrollment(
+            workspace_id,
+            builder,
+            name="Unauthorized runner",
+            token=secrets.token_urlsafe(32),
+            now=now,
+        )
 
 
 def test_control_plane_database_target_comparison_ignores_credentials() -> None:

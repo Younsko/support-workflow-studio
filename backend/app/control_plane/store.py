@@ -20,7 +20,7 @@ WORKSPACE_ROLES = frozenset(
     {"Owner", "Admin", "Builder", "Operator", "Approver", "Viewer"}
 )
 _SAFE_WORKSPACE_ID = re.compile(r"^[a-f0-9]{32}$")
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 class WorkspaceNotFound(LookupError):
@@ -36,6 +36,10 @@ class WorkspaceConflict(ValueError):
 
 
 class InvitationInvalid(ValueError):
+    pass
+
+
+class RunnerCredentialInvalid(PermissionError):
     pass
 
 
@@ -120,7 +124,20 @@ class PostgresControlPlaneStore:
                 occurred_at TIMESTAMPTZ NOT NULL
                 )""",
                 "CREATE INDEX IF NOT EXISTS cp_audit_by_workspace ON cp_audit_events(workspace_id, occurred_at, id)",
-            )
+            ),
+            2: (
+                """CREATE TABLE IF NOT EXISTS cp_runners (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL REFERENCES cp_workspaces(id) ON DELETE CASCADE,
+                name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+                token_hash TEXT NOT NULL UNIQUE,
+                created_by TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                last_heartbeat_at TIMESTAMPTZ,
+                revoked_at TIMESTAMPTZ
+                )""",
+                "CREATE INDEX IF NOT EXISTS cp_runners_by_workspace ON cp_runners(workspace_id, created_at, id)",
+            ),
         }
         with self._connect() as connection:
             connection.execute(
@@ -612,3 +629,142 @@ class PostgresControlPlaneStore:
                 (workspace_id, limit),
             ).fetchall()
         return [{**row, "occurred_at": row["occurred_at"].isoformat()} for row in rows]
+
+    def create_runner_enrollment(
+        self,
+        workspace_id: str,
+        principal: Principal,
+        *,
+        name: str,
+        token: str,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        self._validate_workspace_id(workspace_id)
+        display_name = name.strip()
+        if not display_name or len(display_name) > 100 or len(token) < 32:
+            raise ValueError("Runner name or enrollment token is invalid.")
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
+        runner_id = uuid4().hex
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        with self._connect() as connection:
+            self._lock_workspace(connection, workspace_id)
+            actor_role = self._require_member(
+                connection, workspace_id, principal.subject
+            )
+            self._require_admin(actor_role)
+            connection.execute(
+                """INSERT INTO cp_runners(
+                    id, workspace_id, name, token_hash, created_by, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)""",
+                (
+                    runner_id,
+                    workspace_id,
+                    display_name,
+                    token_hash,
+                    principal.subject,
+                    timestamp,
+                ),
+            )
+            self._audit(
+                connection,
+                workspace_id=workspace_id,
+                actor_subject=principal.subject,
+                event_type="runner.enrollment_created",
+                target_type="runner",
+                target_id=runner_id,
+                now=timestamp,
+            )
+        return {
+            "id": runner_id,
+            "workspace_id": workspace_id,
+            "name": display_name,
+            "created_by": principal.subject,
+            "created_at": timestamp.isoformat(),
+            "last_heartbeat_at": None,
+            "revoked_at": None,
+        }
+
+    def list_runners(
+        self, workspace_id: str, subject: str
+    ) -> list[dict[str, object]]:
+        self._validate_workspace_id(workspace_id)
+        with self._connect() as connection:
+            self._require_member(connection, workspace_id, subject)
+            rows = connection.execute(
+                """SELECT id, name, created_by, created_at, last_heartbeat_at, revoked_at
+                   FROM cp_runners WHERE workspace_id=%s ORDER BY created_at, id""",
+                (workspace_id,),
+            ).fetchall()
+        return [
+            {
+                **row,
+                **{
+                    key: row[key].isoformat() if row[key] is not None else None
+                    for key in ("created_at", "last_heartbeat_at", "revoked_at")
+                },
+            }
+            for row in rows
+        ]
+
+    def revoke_runner(
+        self,
+        workspace_id: str,
+        runner_id: str,
+        principal: Principal,
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        self._validate_workspace_id(workspace_id)
+        if not _SAFE_WORKSPACE_ID.fullmatch(runner_id):
+            raise WorkspaceNotFound(runner_id)
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
+        with self._connect() as connection:
+            self._lock_workspace(connection, workspace_id)
+            actor_role = self._require_member(
+                connection, workspace_id, principal.subject
+            )
+            self._require_admin(actor_role)
+            cursor = connection.execute(
+                """UPDATE cp_runners SET revoked_at=%s
+                   WHERE id=%s AND workspace_id=%s AND revoked_at IS NULL""",
+                (timestamp, runner_id, workspace_id),
+            )
+            if cursor.rowcount != 1:
+                raise WorkspaceNotFound(runner_id)
+            self._audit(
+                connection,
+                workspace_id=workspace_id,
+                actor_subject=principal.subject,
+                event_type="runner.revoked",
+                target_type="runner",
+                target_id=runner_id,
+                now=timestamp,
+            )
+
+    def record_runner_heartbeat(
+        self,
+        runner_id: str,
+        token: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        if not _SAFE_WORKSPACE_ID.fullmatch(runner_id) or len(token) < 32:
+            raise RunnerCredentialInvalid("Runner credential is invalid.")
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
+        supplied_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT token_hash, revoked_at FROM cp_runners WHERE id=%s FOR UPDATE",
+                (runner_id,),
+            ).fetchone()
+            if (
+                row is None
+                or row["revoked_at"] is not None
+                or not hmac.compare_digest(row["token_hash"], supplied_hash)
+            ):
+                raise RunnerCredentialInvalid("Runner credential is invalid.")
+            connection.execute(
+                "UPDATE cp_runners SET last_heartbeat_at=%s WHERE id=%s",
+                (timestamp, runner_id),
+            )
+        return {"runner_id": runner_id, "last_heartbeat_at": timestamp.isoformat()}

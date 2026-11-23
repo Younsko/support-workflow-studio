@@ -35,3 +35,45 @@ def test_audit_limit_is_rejected_at_the_http_boundary() -> None:
 
     assert too_small.status_code == 422
     assert too_large.status_code == 422
+
+
+def test_runner_enrollment_and_heartbeat_mark_credentials_as_non_cacheable() -> None:
+    app = create_control_plane_app()
+    app.dependency_overrides[current_principal] = lambda: Principal(
+        subject="subject-1", email="person@example.test"
+    )
+
+    class StoreStub:
+        def __init__(self) -> None:
+            self.token: str | None = None
+
+        def create_runner_enrollment(
+            self, workspace_id: str, principal: Principal, *, name: str, token: str
+        ) -> dict[str, object]:
+            self.token = token
+            return {"id": "a" * 32, "workspace_id": workspace_id, "name": name}
+
+        def record_runner_heartbeat(
+            self, runner_id: str, token: str
+        ) -> dict[str, object]:
+            assert token == self.token
+            return {"runner_id": runner_id, "last_heartbeat_at": "now"}
+
+    store = StoreStub()
+    app.dependency_overrides[get_control_plane_store] = lambda: store
+    client = TestClient(app)
+
+    enrollment = client.post(
+        f"/api/v1/workspaces/{'b' * 32}/runners", json={"name": "Private runner"}
+    )
+    token = enrollment.json()["token"]
+    heartbeat = client.post(
+        f"/api/v1/runners/{'a' * 32}/heartbeat",
+        headers={"X-Runner-Token": token},
+    )
+
+    assert enrollment.status_code == 201
+    assert len(token) >= 32
+    assert enrollment.headers["cache-control"] == "no-store"
+    assert heartbeat.status_code == 200
+    assert heartbeat.headers["cache-control"] == "no-store"
