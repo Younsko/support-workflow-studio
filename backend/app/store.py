@@ -28,6 +28,7 @@ RunEventType = Literal[
 ]
 RunStatus = Literal["awaiting_human", "approved", "edited", "rejected", "failed"]
 PublishOutcome = Literal["not_started", "published", "unknown", "failed"]
+AuditActorRole = Literal["Owner", "Admin", "Builder", "Operator", "Approver", "Viewer"]
 
 
 class RunEventInput(BaseModel):
@@ -40,6 +41,8 @@ class RunEventInput(BaseModel):
     decision_version: int | None = Field(default=None, ge=0)
     score: float | None = Field(default=None, ge=0, le=10)
     outcome: PublishOutcome | None = None
+    actor_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    actor_role: AuditActorRole | None = None
 
 
 class RunAuditEvent(BaseModel):
@@ -58,6 +61,8 @@ class RunAuditEvent(BaseModel):
     decision_version: int | None = None
     score: float | None = None
     outcome: PublishOutcome | None = None
+    actor_id: str | None = None
+    actor_role: AuditActorRole | None = None
 
 
 _SAFE_CASE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
@@ -201,9 +206,18 @@ class LocalStore:
                     to_status TEXT,
                     decision_version INTEGER,
                     score REAL,
-                    outcome TEXT
+                    outcome TEXT,
+                    actor_id TEXT,
+                    actor_role TEXT
                 )"""
             )
+            run_event_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(run_events)")
+            }
+            if "actor_id" not in run_event_columns:
+                connection.execute("ALTER TABLE run_events ADD COLUMN actor_id TEXT")
+            if "actor_role" not in run_event_columns:
+                connection.execute("ALTER TABLE run_events ADD COLUMN actor_role TEXT")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS run_events_by_run_sequence "
                 "ON run_events(run_id, sequence)"
@@ -508,8 +522,8 @@ class LocalStore:
         connection.execute(
             """INSERT INTO run_events(
                 event_id, run_id, case_id, event_type, occurred_at,
-                from_status, to_status, decision_version, score, outcome
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                from_status, to_status, decision_version, score, outcome, actor_id, actor_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 event_id,
                 run_id,
@@ -521,6 +535,8 @@ class LocalStore:
                 metadata.decision_version,
                 metadata.score,
                 metadata.outcome,
+                metadata.actor_id,
+                metadata.actor_role,
             ),
         )
         sequence = connection.execute(
@@ -592,7 +608,7 @@ class LocalStore:
             event_rows = connection.execute(
                 f"""SELECT e.sequence, e.event_id, e.run_id, e.case_id, e.event_type,
                           e.occurred_at, e.from_status, e.to_status, e.decision_version,
-                          e.score, e.outcome, o.attempts
+                          e.score, e.outcome, e.actor_id, e.actor_role, o.attempts
                    FROM run_events e JOIN run_event_outbox o USING(event_id)
                    WHERE e.event_id IN ({placeholders}) ORDER BY e.sequence""",
                 event_ids,
@@ -698,7 +714,7 @@ class LocalStore:
             rows = connection.execute(
                 """SELECT sequence, event_id, run_id, case_id, event_type,
                           occurred_at, from_status, to_status,
-                          decision_version, score, outcome
+                          decision_version, score, outcome, actor_id, actor_role
                    FROM run_events WHERE run_id = ? ORDER BY sequence""",
                 (run_id,),
             ).fetchall()

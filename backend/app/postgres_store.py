@@ -107,7 +107,9 @@ class PostgresStore:
                 to_status TEXT,
                 decision_version INTEGER,
                 score DOUBLE PRECISION,
-                outcome TEXT
+                outcome TEXT,
+                actor_id TEXT,
+                actor_role TEXT
             )""",
             """CREATE TABLE IF NOT EXISTS run_event_outbox (
                 event_id TEXT PRIMARY KEY REFERENCES run_events(event_id),
@@ -132,11 +134,16 @@ class PostgresStore:
         with self._connect() as connection:
             for statement in statements:
                 connection.execute(statement)
+            connection.execute("ALTER TABLE run_events ADD COLUMN IF NOT EXISTS actor_id TEXT")
+            connection.execute("ALTER TABLE run_events ADD COLUMN IF NOT EXISTS actor_role TEXT")
             connection.execute(
                 "INSERT INTO support_schema_migrations(version) VALUES (1) ON CONFLICT DO NOTHING"
             )
             connection.execute(
                 "INSERT INTO support_schema_migrations(version) VALUES (2) ON CONFLICT DO NOTHING"
+            )
+            connection.execute(
+                "INSERT INTO support_schema_migrations(version) VALUES (3) ON CONFLICT DO NOTHING"
             )
 
     @staticmethod
@@ -440,8 +447,8 @@ class PostgresStore:
         row = connection.execute(
             """INSERT INTO run_events(
                 event_id, run_id, case_id, event_type, occurred_at,
-                from_status, to_status, decision_version, score, outcome
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                from_status, to_status, decision_version, score, outcome, actor_id, actor_role
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING sequence""",
             (
                 event_id,
@@ -454,6 +461,8 @@ class PostgresStore:
                 metadata.decision_version,
                 metadata.score,
                 metadata.outcome,
+                metadata.actor_id,
+                metadata.actor_role,
             ),
         ).fetchone()
         connection.execute(
@@ -496,7 +505,7 @@ class PostgresStore:
             rows = connection.execute(
                 """SELECT sequence, event_id, run_id, case_id, event_type,
                           occurred_at, from_status, to_status, decision_version,
-                          score, outcome
+                          score, outcome, actor_id, actor_role
                    FROM run_events WHERE run_id=%s ORDER BY sequence""",
                 (run_id,),
             ).fetchall()
@@ -547,7 +556,7 @@ class PostgresStore:
             event_rows = connection.execute(
                 """SELECT e.sequence, e.event_id, e.run_id, e.case_id, e.event_type,
                           e.occurred_at, e.from_status, e.to_status, e.decision_version,
-                          e.score, e.outcome, o.attempts
+                          e.score, e.outcome, e.actor_id, e.actor_role, o.attempts
                    FROM run_events e JOIN run_event_outbox o USING(event_id)
                    WHERE e.event_id = ANY(%s) ORDER BY e.sequence""",
                 (event_ids,),

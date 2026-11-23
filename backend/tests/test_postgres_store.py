@@ -80,7 +80,7 @@ def test_postgres_schema_is_repeatable_and_cases_runs_survive_reopen(store: Post
         versions = connection.execute(
             "SELECT version FROM support_schema_migrations ORDER BY version"
         ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2]
+    assert [row["version"] for row in versions] == [1, 2, 3]
 
 
 def test_postgres_store_identity_binding_rejects_cross_workspace_reuse(
@@ -131,12 +131,20 @@ def test_postgres_run_claims_are_idempotent_and_fenced(store: PostgresStore) -> 
     )
     store.save_run(
         run,
-        audit_event=(run.id, run.case_id, "workflow.started", {"to_status": "awaiting_human"}),
+        audit_event=(
+            run.id,
+            run.case_id,
+            "decision.approved",
+            {"to_status": "approved", "actor_id": "a" * 64, "actor_role": "Approver"},
+        ),
         execution_claim=("request-001", "worker-two"),
     )
     assert _claim(store, now=now + timedelta(seconds=13), owner="worker-three")["state"] == "completed"
     assert store.list_execution_steps(run.id)[0]["attempt"] == 2
-    assert len(store.list_run_events(run.id)) == 1
+    events = store.list_run_events(run.id)
+    assert len(events) == 1
+    assert events[0]["actor_id"] == "a" * 64
+    assert events[0]["actor_role"] == "Approver"
     assert store.run_event_outbox_counts() == {"pending": 1, "leased": 0, "delivered": 0}
 
 

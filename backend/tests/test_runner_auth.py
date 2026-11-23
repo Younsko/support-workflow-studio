@@ -8,6 +8,7 @@ from app.runner_auth import (
     RunnerAuthConfigurationError,
     required_roles,
 )
+from app.schemas import CaseRecord, WorkflowResult
 from app.store import LocalStore
 from app.workflow_api import WorkflowRegistry
 from fastapi.testclient import TestClient
@@ -26,6 +27,7 @@ def _configure_runner_auth(monkeypatch: pytest.MonkeyPatch) -> tuple[str, str]:
     )
     monkeypatch.setenv("SUPPORT_RUNNER_ALLOWED_HOSTS", "testserver")
     monkeypatch.setenv("SUPPORT_RUNNER_ALLOWED_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("SUPPORT_RUNNER_AUDIT_HASH_KEY", "test-audit-hash-key-that-is-long-enough")
     return workspace_id, runner_id
 
 
@@ -67,6 +69,20 @@ def test_runner_auth_configuration_rejects_wildcard_hosts_and_insecure_remote_or
     monkeypatch.setenv("SUPPORT_RUNNER_ALLOWED_HOSTS", "runner.example")
     monkeypatch.setenv("SUPPORT_RUNNER_ALLOWED_ORIGINS", "http://ui.example")
     with pytest.raises(RunnerAuthConfigurationError, match="must use HTTPS"):
+        RunnerAuthConfig.from_env()
+
+
+def test_runner_auth_requires_a_stable_audit_pseudonym_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_runner_auth(monkeypatch)
+    config = RunnerAuthConfig.from_env()
+    assert config is not None
+    assert config.actor_id("oidc-subject") == config.actor_id("oidc-subject")
+    assert config.actor_id("oidc-subject") != "oidc-subject"
+
+    monkeypatch.delenv("SUPPORT_RUNNER_AUDIT_HASH_KEY")
+    with pytest.raises(RunnerAuthConfigurationError, match="at least 32 UTF-8 bytes"):
         RunnerAuthConfig.from_env()
 
 
@@ -159,6 +175,77 @@ def test_authenticated_runner_routes_reject_missing_tokens_and_enforce_roles(
             },
         )
         assert created.status_code == 201
+
+
+def test_approval_audit_records_hmac_actor_without_raw_subject(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _configure_runner_auth(monkeypatch)
+    state_store = LocalStore(tmp_path / "state.sqlite3")
+    registry = WorkflowRegistry(tmp_path / "workflows.sqlite3")
+    monkeypatch.setattr(main, "configured_store", lambda: state_store)
+    monkeypatch.setattr(main, "configured_workflow_registry", lambda: registry)
+    subject = "opaque-identity-provider-subject"
+    monkeypatch.setattr(
+        runner_auth,
+        "verify_workspace_session",
+        lambda token, **kwargs: {
+            "workspace_id": "a" * 32,
+            "runner_id": "b" * 32,
+            "role": "Approver",
+            "sub": subject,
+            "jti": "session-token-id",
+        },
+    )
+    case = CaseRecord(
+        id="SYN-4821",
+        title="Synthetic access request",
+        requester="Demo user",
+        channel="Portal",
+        created_at="2026-11-23T12:00:00Z",
+        priority="P3",
+        category="Access",
+        status="Open",
+        body="Synthetic request body for the audit test.",
+        impact="One synthetic account",
+    )
+    run = WorkflowResult(
+        id="a" * 32,
+        case_id=case.id,
+        status="awaiting_human",
+        provider_mode="demo",
+        model_name="Synthetic demo",
+        started_at="2026-11-23T12:00:00Z",
+        elapsed_ms=1,
+        score=9.4,
+        rounds=1,
+        candidate_count=1,
+        category="Access",
+        urgency="normal",
+        confidence=1.0,
+        evidence=[],
+        plan=[],
+        draft="Synthetic, reviewed draft.",
+        reviewer_findings=[],
+        stages=[],
+    )
+    state_store.save_case(case)
+    state_store.save_run(run)
+    config = RunnerAuthConfig.from_env()
+    assert config is not None
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            f"/api/workflows/{run.id}/decision",
+            headers={"Authorization": "Bearer approver-token"},
+            json={"decision": "approve", "expected_version": 0},
+        )
+
+    assert response.status_code == 200
+    events = state_store.list_run_events(run.id)
+    assert events[-1]["actor_id"] == config.actor_id(subject)
+    assert events[-1]["actor_role"] == "Approver"
+    assert subject not in repr(events)
 
 
 def test_authenticated_runner_rejects_unlisted_host_and_origin(

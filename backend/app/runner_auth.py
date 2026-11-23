@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hmac
 import ipaddress
 import os
 import re
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -31,6 +33,7 @@ class RunnerAuthConfig:
     jwks_uri: str
     allowed_hosts: frozenset[str]
     allowed_origins: frozenset[str]
+    audit_hash_key: bytes
 
     @classmethod
     def from_env(cls) -> RunnerAuthConfig | None:
@@ -69,6 +72,11 @@ class RunnerAuthConfig:
             raise RunnerAuthConfigurationError(
                 "SUPPORT_RUNNER_ALLOWED_ORIGINS must list exact browser origins."
             )
+        audit_hash_secret = os.getenv("SUPPORT_RUNNER_AUDIT_HASH_KEY", "")
+        if len(audit_hash_secret.encode("utf-8")) < 32:
+            raise RunnerAuthConfigurationError(
+                "SUPPORT_RUNNER_AUDIT_HASH_KEY must contain at least 32 UTF-8 bytes."
+            )
 
         return cls(
             identity=identity,
@@ -76,7 +84,12 @@ class RunnerAuthConfig:
             jwks_uri=jwks_uri,
             allowed_hosts=hosts,
             allowed_origins=origins,
+            audit_hash_key=audit_hash_secret.encode("utf-8"),
         )
+
+    def actor_id(self, subject: str) -> str:
+        """Return a stable, workspace-local pseudonymous actor identifier."""
+        return hmac.new(self.audit_hash_key, subject.encode("utf-8"), sha256).hexdigest()
 
 
 def _require_https_url(value: str, name: str) -> None:

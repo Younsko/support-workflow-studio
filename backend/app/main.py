@@ -801,9 +801,8 @@ async def require_local_client(request: Request, call_next) -> Response:
             request.state.support_actor = {
                 "workspace_id": auth_config.identity.workspace_id,
                 "runner_id": auth_config.identity.runner_id,
-                "subject": claims["sub"],
+                "actor_id": auth_config.actor_id(claims["sub"]),
                 "role": claims["role"],
-                "jti": claims["jti"],
             }
         return await call_next(request)
 
@@ -1759,7 +1758,7 @@ async def _start_workflow_locked(
 
 
 @app.post("/api/workflows/{run_id}/publish-ticket-reply")
-async def publish_ticket_reply(run_id: str) -> dict[str, object]:
+async def publish_ticket_reply(run_id: str, request: Request) -> dict[str, object]:
     if _private_local_mode_enabled():
         raise HTTPException(
             status_code=403,
@@ -1767,10 +1766,21 @@ async def publish_ticket_reply(run_id: str) -> dict[str, object]:
         )
     lock = PUBLISH_LOCKS.setdefault(run_id, asyncio.Lock())
     async with lock:
-        return await _publish_ticket_reply_locked(run_id)
+        return await _publish_ticket_reply_locked(
+            run_id, actor_metadata=_audit_actor_metadata(request)
+        )
 
 
-async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
+def _audit_actor_metadata(request: Request) -> dict[str, object]:
+    actor = getattr(request.state, "support_actor", None)
+    if not isinstance(actor, dict):
+        return {}
+    return {"actor_id": actor["actor_id"], "actor_role": actor["role"]}
+
+
+async def _publish_ticket_reply_locked(
+    run_id: str, *, actor_metadata: dict[str, object] | None = None
+) -> dict[str, object]:
     result = RUNS.get(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Workflow run not found")
@@ -1823,6 +1833,7 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
                 "to_status": result.status,
                 "decision_version": result.approval_version,
                 "outcome": "unknown",
+                **(actor_metadata or {}),
             },
         ),
     )
@@ -1832,21 +1843,36 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
         result.ticket_comment_outcome = "failed"
         _save_run(
             result,
-            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.failed",
+                {"outcome": "failed", **(actor_metadata or {})},
+            ),
         )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
         _save_run(
             result,
-            audit_event=(result.id, result.case_id, "publish.unknown", {"outcome": "unknown"}),
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
+            ),
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ITSMRequestError as exc:
         result.ticket_comment_outcome = "failed"
         _save_run(
             result,
-            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.failed",
+                {"outcome": "failed", **(actor_metadata or {})},
+            ),
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     result.ticket_comment_published = True
@@ -1854,7 +1880,12 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
     result.ticket_comment_outcome = "published"
     _save_run(
         result,
-        audit_event=(result.id, result.case_id, "publish.succeeded", {"outcome": "published"}),
+        audit_event=(
+            result.id,
+            result.case_id,
+            "publish.succeeded",
+            {"outcome": "published", **(actor_metadata or {})},
+        ),
     )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
 
@@ -1966,14 +1997,21 @@ async def workflow_execution_steps(run_id: str) -> list[dict[str, object]]:
 
 
 @app.post("/api/workflows/{run_id}/decision", response_model=WorkflowResult)
-async def decide(run_id: str, request: DecisionRequest) -> WorkflowResult:
+async def decide(
+    run_id: str, request: DecisionRequest, http_request: Request
+) -> WorkflowResult:
     lock = DECISION_LOCKS.setdefault(run_id, asyncio.Lock())
     async with lock:
-        return await _decide_locked(run_id, request)
+        return await _decide_locked(
+            run_id, request, actor_metadata=_audit_actor_metadata(http_request)
+        )
 
 
 async def _decide_locked(
-    run_id: str, request: DecisionRequest
+    run_id: str,
+    request: DecisionRequest,
+    *,
+    actor_metadata: dict[str, object] | None = None,
 ) -> WorkflowResult:
     result = RUNS.get(run_id)
     if result is None:
@@ -2125,6 +2163,7 @@ async def _decide_locked(
                 "to_status": result.status,
                 "decision_version": result.approval_version,
                 "score": result.score,
+                **(actor_metadata or {}),
             },
         ),
     )

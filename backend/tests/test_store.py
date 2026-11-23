@@ -445,6 +445,43 @@ def test_run_audit_events_survive_reopen_in_stable_order_without_content(tmp_pat
     assert "api_key" not in serialized_rows.lower()
 
 
+def test_run_audit_persists_pseudonymous_actor_and_role(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    actor_id = "a" * 64
+    event = store.append_run_event(
+        uuid4().hex,
+        "SUP-4821",
+        "decision.approved",
+        {"actor_id": actor_id, "actor_role": "Approver"},
+    )
+    assert event["actor_id"] == actor_id
+    assert event["actor_role"] == "Approver"
+
+
+def test_run_audit_schema_migrates_existing_database(tmp_path) -> None:
+    database = tmp_path / "legacy-state.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """CREATE TABLE run_events (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,
+                run_id TEXT NOT NULL,
+                case_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT,
+                decision_version INTEGER,
+                score REAL,
+                outcome TEXT
+            )"""
+        )
+    LocalStore(database)
+    with sqlite3.connect(database) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(run_events)")}
+    assert {"actor_id", "actor_role"} <= columns
+
+
 @pytest.mark.parametrize(
     "metadata",
     [
@@ -453,6 +490,8 @@ def test_run_audit_events_survive_reopen_in_stable_order_without_content(tmp_pat
         {"api_key": "secret"},
         {"token": "secret"},
         {"score": "high"},
+        {"actor_id": "person@example.com"},
+        {"actor_role": "SuperAdmin"},
     ],
 )
 def test_run_audit_rejects_content_and_secret_shaped_metadata(tmp_path, metadata) -> None:
