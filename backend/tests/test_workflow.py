@@ -1900,7 +1900,8 @@ def test_approved_ticket_reply_publishes_only_after_approval_and_once(monkeypatc
     assert published == [("DEMO-84", reviewed_draft)]
 
     duplicate_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
-    assert duplicate_publish.status_code == 409
+    assert duplicate_publish.status_code == 200
+    assert duplicate_publish.json() == publish.json()
     assert len(published) == 1
 
 
