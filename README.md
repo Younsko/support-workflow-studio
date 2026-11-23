@@ -1,63 +1,63 @@
 <h1 align="center"><img src="docs/media/readme-banner.svg" alt="Support Workflow Studio" width="100%"></h1>
 
-<p align="center"><strong>Un studio open source pour concevoir, exécuter et contrôler des workflows d’automatisation du support.</strong><br>
-Des demandes entrantes aux réponses documentées, avec une validation humaine avant toute publication externe.</p>
+<p align="center"><strong>An open-source studio for designing, running, and governing support automation workflows.</strong><br>
+From incoming requests to evidence-based drafts, with a human decision before any external publication.</p>
 
 <p align="center">
-  <a href="https://github.com/Younsko/support-workflow-studio/actions/workflows/ci.yml"><img alt="Build et tests" src="https://github.com/Younsko/support-workflow-studio/actions/workflows/ci.yml/badge.svg"></a>
-  &nbsp; · &nbsp; <a href="#démonstration">Démonstration</a>
-  &nbsp; · &nbsp; <a href="#démarrage-rapide">Démarrage rapide</a>
+  <a href="https://github.com/Younsko/support-workflow-studio/actions/workflows/ci.yml"><img alt="Build and tests" src="https://github.com/Younsko/support-workflow-studio/actions/workflows/ci.yml/badge.svg"></a>
+  &nbsp; · &nbsp; <a href="#demo">Demo</a>
+  &nbsp; · &nbsp; <a href="#quick-start">Quick start</a>
   &nbsp; · &nbsp; <a href="docs/architecture.md">Architecture</a>
-  &nbsp; · &nbsp; <a href="LICENSE">Licence MIT</a>
+  &nbsp; · &nbsp; <a href="LICENSE">MIT license</a>
 </p>
 
-## Démonstration
+## Demo
 
-Ce film de 14 secondes présente le parcours d’une demande de support : réception, qualification, recherche documentaire approuvée, travail de plusieurs agents, contrôle qualité, boucle de révision et décision humaine.
+This 14-second motion design follows a synthetic support request from intake through triage, approved guidance, agent review, a quality gate, human approval, and a separate Jira publication step. It is an animated product vision, not a screen recording of the current app.
 
-https://github.com/user-attachments/assets/ed8991ed-b710-4aa4-974f-c2804bec74ab
+<p align="center"><video src="https://raw.githubusercontent.com/Younsko/support-workflow-studio/codex/published-starter-flow/motion_demo/support-workflow-demo.mp4" width="720" controls preload="metadata"></video><br>
+<a href="motion_demo/support-workflow-demo.mp4"><strong>Download the English demo</strong></a><br>
+<a href="motion_demo/Signal-Path-OpenMotion-English.zip">Download the editable OpenMotion source project</a></p>
 
-La vidéo et les libellés à l’écran sont en français. [Télécharger le MP4](motion_demo/support-workflow-demo.mp4) · [Crédits du film](motion_demo/README.md)
+## Vision
 
-## La vision
+Support Workflow Studio makes support automation understandable and governable. Each step has a clear responsibility, its inputs are visible, and consequential decisions can be reviewed.
 
-Support Workflow Studio vise à rendre les automatisations de support aussi lisibles et gouvernables que des workflows construits dans un studio visuel : chaque étape a une responsabilité claire, ses entrées sont explicites, et les décisions importantes restent vérifiables.
+Teams should be able to connect an ITSM, approved knowledge sources, and hosted or local models, then shape automations in a visual canvas. The same foundation is intended to support routine level-one requests, specialist investigations, engineering escalations, and more advanced operations workflows.
 
-À terme, une équipe pourra connecter son ITSM, ses sources de connaissances, ses modèles hébergés ou locaux, puis composer ses propres automatisations depuis un canvas. Un même socle pourra accueillir les demandes simples de niveau 1, les investigations spécialisées, les escalades d’ingénierie et des workflows d’exploitation plus avancés.
+The product is moving toward team workspaces, durable runs, a customer-controlled runner, a broader connector catalog, chat entry points such as Teams or Slack, and stronger governance. These are roadmap goals; see the [SaaS readiness plan](docs/saas-readiness.md) for what exists today and what remains.
 
-Le projet avance vers une plateforme d’équipe avec identité et rôles, exécutions durables, runner contrôlé par le client, catalogue de connecteurs, intégrations de messagerie comme Teams ou Slack, gouvernance et déploiement à l’échelle. Ces capacités restent une direction produit : consultez [l’état SaaS et les étapes de livraison](docs/saas-readiness.md) pour distinguer ce qui existe déjà de ce qui reste à construire.
-
-## Le workflow support
+## The support workflow
 
 ```mermaid
 flowchart LR
-    A[Ticket entrant] --> B[Normalisation et triage]
-    B --> C[Recherche dans les sources approuvées]
-    C --> D[Agent rédacteur]
-    D --> E[Vérification indépendante]
-    E --> F{Score qualité ≥ 9/10 ?}
-    F -- Non --> D
-    F -- Oui --> G[Validation humaine]
-    G --> H[Publication explicite dans l’ITSM]
+    A[Incoming ticket] --> B[Normalize and triage]
+    B --> C[Search approved knowledge]
+    C --> D[Draft response]
+    D --> E[Independent verification]
+    E --> F{Quality score ≥ 9/10?}
+    F -- No: revise --> D
+    F -- Yes --> G[Human approval]
+    G --> H[Explicit Jira publication]
 ```
 
-Le runtime prépare un brouillon à partir du ticket et des éléments de connaissance disponibles. Des contrôles déterministes, un vérificateur et des voies de revue spécialisées évaluent la réponse. Une personne peut l’approuver, la modifier ou la rejeter. La publication vers Jira Service Management est une action distincte, précédée d’une nouvelle vérification de l’état du ticket.
+The runtime prepares a draft from a ticket and available knowledge. Deterministic checks, an independent verifier, and specialist review lanes assess the response. A person can approve, edit, or reject it. Publishing to Jira Service Management is a separate action and rechecks the ticket state before writing.
 
-Le canvas permet d’enregistrer et de publier des versions immuables. Aujourd’hui, seul le flux linéaire de démarrage est exécutable, sur un ticket relié à Jira Service Management et lorsque les connexions Jira, documentation et modèle correspondent à la configuration locale. Les graphes non pris en charge sont refusés avant tout appel externe.
+The canvas can save and publish immutable workflow versions. Today, only the constrained linear starter flow is executable, and only when the Jira, knowledge, and model connections match the local configuration. Unsupported graphs are rejected before external work begins.
 
-## Ce que contient le prototype
+## What the prototype includes
 
-- **Canvas visuel** : étapes configurables, palette, inspecteur, validation, historique des versions et création d’un brouillon depuis une version publiée.
-- **Exécution bornée** : compilation stricte du flux de démarrage, vérification des empreintes et des connexions, rattachement à la version publiée et clé d’idempotence locale pour éviter de relancer un run déjà terminé après un retry. La chronologie affiche aussi les durées enregistrées par étape pour les runs publiés.
-- **Orchestration de support** : qualification N1 à N3+, pistes d’investigation spécialisées, planification avec boucle architecte/critique/révision et seuil de qualité, vérification indépendante et éléments de preuve.
-- **Sources de connaissance** : dossier local dont les fichiers sont explicitement autorisés ou recherche Confluence en lecture seule avec consentement et périmètre définis.
-- **Modèles** : mode déterministe de démonstration, Ollama local, API compatibles OpenAI et Anthropic selon la configuration locale.
-- **Contrôle humain** : approbation ou rejet du brouillon, relecture après édition et publication Jira séparée. Le système bloque les réponses sous le seuil qualité et les résultats d’envoi incertains ne sont pas réessayés automatiquement.
-- **Interface bilingue** : application, configuration et canvas en français et en anglais.
+- **Visual canvas:** configurable steps, node palette, inspector, validation, version history, and draft creation from a published version.
+- **Bounded execution:** strict compilation of the starter flow, configuration and fingerprint checks, immutable version binding, local idempotency keys, and persisted stage timing for published runs.
+- **Support orchestration:** level-one through level-three-plus triage, specialist investigation lanes, an architect/critic/revision loop with a quality threshold, independent verification, and evidence references.
+- **Knowledge sources:** an operator-approved local folder or read-only, scope-limited Confluence search with explicit consent.
+- **Model providers:** deterministic demo mode, local Ollama, and compatible OpenAI or Anthropic APIs, configured locally.
+- **Human control:** approve, edit, or reject a draft; re-review edits; and publish to Jira in a separate step. Low-quality drafts are blocked, and uncertain write outcomes are not retried automatically.
+- **Bilingual application UI:** English and French translations for the application, setup, and workflow canvas.
 
-## Démarrage rapide
+## Quick start
 
-Le mode démo utilise des tickets et une base de connaissances synthétiques. Python 3.11+ et Node.js 20+ sont nécessaires.
+The demo uses synthetic tickets and a synthetic knowledge base. Python 3.11+ and Node.js 20+ are required.
 
 ```sh
 git clone https://github.com/Younsko/support-workflow-studio.git
@@ -69,24 +69,24 @@ npm --prefix frontend run build
 .venv/bin/python -m uvicorn app.main:app --app-dir backend
 ```
 
-Sous Windows, remplacez `.venv/bin/python` par `.venv\Scripts\python.exe`.
-Ouvrez ensuite [http://127.0.0.1:8000](http://127.0.0.1:8000), sélectionnez le ticket synthétique proposé et lancez le workflow. Le mode démo n’exige ni clé de modèle ni compte Jira.
+On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000), select the synthetic sample ticket, and start the workflow. Demo mode needs no model API key or Jira account.
 
-Pour connecter Jira Service Management ou une source de connaissances, commencez par le [guide de configuration](docs/connector-setup.md). Les clés restent sur la machine locale dans le fichier `.env` ignoré par Git. La connexion à un modèle externe exige une activation explicite de l’envoi de données.
+To connect Jira Service Management or a knowledge source, start with the [connector setup guide](docs/connector-setup.md). Keys stay on the local machine in the Git-ignored `.env` file. External model use requires explicit consent to send the data required by the selected provider.
 
-## Une interface de workflow, pensée pour être modifiée
+## Design and motion
 
-Le studio reprend les repères familiers des outils de workflow : canvas central, étapes reliées, bibliothèque de nœuds, inspecteur de configuration et accès à l’historique. L’interface est développée en React, TypeScript et CSS. La direction visuelle s’appuie sur les recommandations du plugin **Impeccable** ; l’implémentation reste dans le code du projet et n’ajoute pas de dépendance de design à l’application.
+The application is built with React, TypeScript, and CSS. The visual direction was guided by the **Impeccable** design plugin, with the implementation kept in the project’s own components and styles. The workflow film was composed in code with **OpenMotion** and its Decision Tree template. Its editable source project is included; the user-supplied music track is not part of the source archive.
 
-## Architecture et limites actuelles
+## Architecture and current limits
 
-Le projet sépare les définitions de workflow, le runtime de support, les adaptateurs ITSM et les fournisseurs de modèles. Les données de démonstration sont synthétiques. L’application actuelle est un prototype local mono-opérateur : les versions et l’état d’exécution utilisent SQLite, et aucune identité d’équipe ni isolation multi-tenant n’est encore fournie.
+Workflow definitions, the support runtime, ITSM adapters, and model providers are separate parts of the system. Demo records are synthetic. The current application is a local, single-operator prototype: workflow versions and run state use SQLite, and there is no team identity or multi-tenant isolation yet.
 
-Ce dépôt ne prétend pas encore être prêt pour une exploitation SaaS à grande échelle. Les prochaines étapes portent sur l’authentification et les espaces de travail, un runner durable, la reprise idempotente après incident, les rôles d’approbation, davantage de connecteurs, la sécurité de bout en bout, l’observabilité, les sauvegardes et les tests de charge. Les limites détaillées sont documentées dans [l’état de préparation SaaS](docs/saas-readiness.md) et le [modèle de menace](docs/threat-model.md).
+This project does not yet claim production SaaS or large-scale readiness. The next steps include authentication and workspaces, a production runner and Postgres persistence, restartable step execution, approval roles, more connectors, private data paths, observability, backups, and load testing. See the [SaaS readiness plan](docs/saas-readiness.md) and [threat model](docs/threat-model.md) for details.
 
-## Développement
+## Development
 
-Les tests backend utilisent des données synthétiques :
+Backend tests use synthetic data:
 
 ```sh
 python -m pytest backend/tests -q
@@ -94,8 +94,8 @@ python -m ruff check backend/app backend/tests
 npm --prefix frontend run build
 ```
 
-Pour développer l’interface, démarrez FastAPI puis `npm --prefix frontend run dev` dans un second terminal. Vite relaie les appels `/api` vers le backend local. Voir le [guide des connecteurs](docs/connector-development.md), les [tests backend](backend/tests) et le [workflow CI](.github/workflows/ci.yml).
+For UI development, start FastAPI and run `npm --prefix frontend run dev` in a second terminal. Vite proxies `/api` to the local backend. See the [connector development guide](docs/connector-development.md), [backend tests](backend/tests), and [CI workflow](.github/workflows/ci.yml).
 
-## Licence
+## License
 
-Le code de l’application est distribué sous licence [MIT](LICENSE). La musique de la vidéo est créditée dans le [dossier du film](motion_demo/README.md).
+The application code is distributed under the [MIT license](LICENSE). Music credits for the demo are documented in the [motion film notes](motion_demo/README.md).
