@@ -98,6 +98,23 @@ npm --prefix frontend run build
 
 For UI development, start FastAPI and run `npm --prefix frontend run dev` in a second terminal. Vite proxies `/api` to the local backend. See the [connector development guide](docs/connector-development.md), [backend tests](backend/tests), and [CI workflow](.github/workflows/ci.yml).
 
+### Workspace console preview
+
+To preview the separate workspace console, start the control-plane API in one terminal:
+
+```sh
+cd backend
+python -m uvicorn app.control_plane.api:app --host 127.0.0.1 --port 8001
+```
+
+Then start its Vite page in another terminal from the repository root:
+
+```sh
+npm --prefix frontend run dev:control-plane
+```
+
+Open `http://127.0.0.1:5174/control-plane.html`. With no identity-provider configuration, the page shows the setup state; signing in and managing a workspace requires Postgres and the OIDC settings described in the [control-plane notes](docs/control-plane-foundation.md). This preview does not authenticate or authorize the ticket application.
+
 ## License
 
 The application code is distributed under the [MIT license](LICENSE). Music credits for the demo are documented in the [motion film notes](motion_demo/README.md).
