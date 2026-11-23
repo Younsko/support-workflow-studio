@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowDownUp, ArrowLeft, ArrowRight, Bot, Check, ChevronDown,
+  ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Bot, Check, ChevronDown,
   CircleAlert, ClipboardCheck, Clock3, FileCheck2, FileSearch,
   GripVertical, History, Inbox, Languages, LockKeyhole, Minus, Plus, Search, Settings2, ShieldCheck,
   Save, Trash2, UserRoundCheck, Waypoints, X,
@@ -34,6 +34,8 @@ const copy = {
     subtitle: 'Build a reviewable support flow, step by step.', trigger: 'Trigger', action: 'Action', ai: 'AI agent', review: 'Review',
     addNode: 'Add a step', palette: 'Step library', search: 'Search steps', canvas: 'Workflow canvas',
     zoomOut: 'Zoom out', zoomIn: 'Zoom in', fit: 'Fit workflow', inspector: 'Step settings',
+    moveEarlier: 'Move step earlier', moveLater: 'Move step later', stepOrder: 'Step order',
+    orderHint: 'The ticket trigger stays first. Reordering changes this linear sequence only; it does not add branching or execution.',
     selectNode: 'Select a step to view its settings.', name: 'Name', description: 'Description', model: 'Model provider',
     tools: 'Approved tools', toolKnowledge: 'Search approved knowledge', toolTicket: 'Read ticket details', role: 'Agent role', approvalGate: 'Approval gate', on: 'Required', requiredForWrite: 'Required before any external reply',
     localNotice: 'Local workflow editor. Ticket execution, team access, and hosted runner are not connected yet.',
@@ -69,6 +71,8 @@ const copy = {
     subtitle: 'Construisez un flux support vérifiable, étape par étape.', trigger: 'Déclencheur', action: 'Action', ai: 'Agent IA', review: 'Revue',
     addNode: 'Ajouter une étape', palette: 'Bibliothèque d’étapes', search: 'Rechercher une étape', canvas: 'Canvas du workflow',
     zoomOut: 'Dézoomer', zoomIn: 'Zoomer', fit: 'Ajuster le workflow', inspector: 'Paramètres de l’étape',
+    moveEarlier: 'Déplacer l’étape plus tôt', moveLater: 'Déplacer l’étape plus tard', stepOrder: 'Ordre des étapes',
+    orderHint: 'Le déclencheur reste en premier. Le réordonnancement modifie uniquement cette séquence linéaire ; il n’ajoute ni branchement ni exécution.',
     selectNode: 'Sélectionnez une étape pour afficher ses paramètres.', name: 'Nom', description: 'Description', model: 'Fournisseur du modèle',
     tools: 'Outils autorisés', toolKnowledge: 'Rechercher dans les sources approuvées', toolTicket: 'Lire les détails du ticket', role: 'Rôle de l’agent', approvalGate: 'Validation humaine', on: 'Requise', requiredForWrite: 'Requise avant toute réponse externe',
     localNotice: 'Éditeur local. Exécution, accès d’équipe et runner hébergé ne sont pas encore connectés.',
@@ -478,6 +482,26 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     setSaveMessage('')
   }
 
+  function moveSelected(direction: -1 | 1) {
+    if (!selected || selected.kind === 'trigger' || unsupportedGraph || saveState === 'saving' || saveState === 'publishing') return
+    const currentIndex = nodes.findIndex((node) => node.id === selected.id)
+    const nextIndex = currentIndex + direction
+    if (currentIndex < 1 || nextIndex < 1 || nextIndex >= nodes.length) return
+    setNodes((current) => {
+      const from = current.findIndex((node) => node.id === selected.id)
+      const to = from + direction
+      if (from < 1 || to < 1 || to >= current.length) return current
+      const reordered = [...current]
+      const [moving] = reordered.splice(from, 1)
+      reordered.splice(to, 0, moving)
+      return reordered
+    })
+    setSelectedId(selected.id)
+    setSaveState('local')
+    setSaveMessage('')
+    setValidation(null)
+  }
+
   function toggleSelectedTool(tool: string) {
     if (!selected || selected.kind !== 'agent' || unsupportedGraph || saveState === 'saving' || saveState === 'publishing') return
     const current = selected.allowedTools ?? []
@@ -659,6 +683,10 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
           <div className="sws-inspector-head"><div><p>{t.inspector}</p><small>{selected ? t.nodeTypes[['trigger','triage','knowledge','agent','verify','approval','publish'].indexOf(selected.kind)] : ''}</small></div><button type="button" className="sws-inspector-menu" aria-label={t.close} disabled><ChevronDown size={16} /></button></div>
           {selected ? <div className="sws-inspector-body">
             <div className="sws-inspector-type"><span className={`sws-icon-box ${typeColors[selected.kind]}`}>{(() => { const Icon = icons[selected.kind]; return <Icon size={16} /> })()}</span><div><b>{selected.title}</b><small>{selected.id.slice(0, 16)}</small></div></div>
+            {selected.kind !== 'trigger' && <section className="sws-step-order" aria-label={t.stepOrder}>
+              <p>{t.orderHint}</p>
+              <div><button type="button" onClick={() => moveSelected(-1)} disabled={nodes.findIndex((node) => node.id === selected.id) <= 1 || unsupportedGraph || saveState === 'saving' || saveState === 'publishing'}><ArrowUp size={14} />{t.moveEarlier}</button><button type="button" onClick={() => moveSelected(1)} disabled={nodes.findIndex((node) => node.id === selected.id) >= nodes.length - 1 || unsupportedGraph || saveState === 'saving' || saveState === 'publishing'}><ArrowDown size={14} />{t.moveLater}</button></div>
+            </section>}
             <label>{t.name}<input value={selected.title} onChange={(event) => updateSelected('title', event.target.value)} maxLength={80} /></label>
             <label>{t.description}<textarea value={selected.subtitle} onChange={(event) => updateSelected('subtitle', event.target.value)} rows={3} maxLength={240} /></label>
             {selected.kind === 'agent' && <>
