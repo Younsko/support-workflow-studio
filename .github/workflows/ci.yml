@@ -10,6 +10,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_TEST_URL: postgresql://postgres:${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/support_workflow_test
     services:
       postgres:
         image: postgres:17
@@ -36,13 +38,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install Python package and development tools
-        run: python -m pip install -e ".[dev,postgres]"
+        run: python -m pip install -e ".[dev,postgres,control-plane]"
       - name: Check Python lint
         run: python -m ruff check backend/app backend/tests
       - name: Run backend tests
         run: python -m pytest -q
-        env:
-          POSTGRES_TEST_URL: postgresql://postgres:${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/support_workflow_test
       - name: Check Python compilation
         run: python -m compileall -q backend/app backend/tests
       - name: Install frontend dependencies
@@ -82,4 +82,47 @@ jobs:
                   time.sleep(1)
           else:
               raise RuntimeError(f"Compose service did not become healthy: {last_error}")
+          PY
+      - name: Build and smoke-test the metadata-only control plane
+        run: |
+          cleanup_control_plane() {
+            docker rm --force support-control-plane-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup_control_plane EXIT
+          docker build --file Dockerfile.control-plane --tag support-control-plane:ci .
+          control_plane_test_url="${POSTGRES_TEST_URL/localhost/host.docker.internal}"
+          docker run --detach --name support-control-plane-ci \
+            --publish 127.0.0.1:8766:8001 \
+            --add-host=host.docker.internal:host-gateway \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --env SUPPORT_CONTROL_PLANE_DATABASE_URL="$control_plane_test_url" \
+            support-control-plane:ci
+          python - <<'PY'
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:8766"
+          last_error = None
+          for _ in range(40):
+              try:
+                  with urllib.request.urlopen(f"{base}/health/ready", timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except urllib.error.HTTPError as exc:
+                  last_error = f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}"
+                  time.sleep(1)
+              except (OSError, urllib.error.URLError) as exc:
+                  last_error = str(exc)
+                  time.sleep(1)
+          else:
+              raise RuntimeError(f"Control plane did not become ready: {last_error}")
+
+          try:
+              urllib.request.urlopen(f"{base}/api/v1/me", timeout=2)
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 401
+          else:
+              raise AssertionError("Control-plane metadata endpoints must require a bearer token.")
           PY

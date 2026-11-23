@@ -21,9 +21,13 @@ flowchart LR
   EVENTS --> UI
   HUMAN[Support reviewer] --> UI
   UI -. approve / edit / reject .-> API
+  CP[Separate OIDC metadata API] --> CPDB[(Dedicated control-plane Postgres)]
+  UI -. not integrated yet .-> CP
 ```
 
 The prototype keeps orchestration in application code. Models propose classifications, independent lane findings, plans, drafts, and reviewer findings; deterministic code owns allowed transitions, retry limits, score calculation, case selection, and the final approval boundary. Investigation lanes inspect separate aspects of the report before planning; specialist reviewer lanes score the completed draft later. Their outputs are shown separately. No model can call an external support system. The optional JSM adapter monitors a human-configured queue in a server-side polling loop; optional auto-triage creates review-only runs and cannot publish replies or commits. The adapter can post a public reply only after a separate explicit action following draft approval and a check that the ticket text still matches the snapshot reviewed by that run. Jira triage requires an operator-selected local knowledge folder and blocks publication when no source matches.
+
+`backend/app/control_plane/api.py` is a second, standalone ASGI application. It validates OIDC bearer tokens and stores workspace, membership, invitation, role, and audit metadata in a dedicated Postgres database. The API contains no ticket or draft fields. This is an initial identity/control-plane foundation only: the browser has no login/session flow, no control-plane route is called from the React app, and the support API does not yet apply these workspace roles. Keep the support app on its local loopback boundary until the complete support-data migration and per-route authorization gates are finished. See the [control-plane foundation](control-plane-foundation.md).
 
 The runtime depends on a `WorkflowStateStore` protocol rather than storage-specific methods. `LocalStore` remains the default SQLite implementation. Setting `SUPPORT_WORKFLOW_DATABASE_URL` selects `PostgresStore` for ticket/run state, idempotency claims, execution journals, lifecycle events, monitor state, and the transactional outbox. Postgres schema version 1 is initialized idempotently, and outbox workers use row locks with `SKIP LOCKED`. The database belongs inside the customer runner's trust boundary. The workflow-definition registry still uses local SQLite, the application still has in-memory run/case caches, and neither workspace isolation nor horizontal application scaling is implemented.
 

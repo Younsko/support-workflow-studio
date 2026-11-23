@@ -31,7 +31,7 @@ MODEL_API_KEY=replace-me
 MODEL_NAME=your-model-id
 ```
 
-For Ollama Cloud, Ollama documents the OpenAI-compatible base URL as `https://ollama.com/v1`; configure an Ollama API key and an available cloud model name. This connector uses chat completions and does not assume other OpenAI API features are supported. See [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility).
+For Ollama Cloud, Ollama documents the OpenAI-compatible base URL as `https://ollama.com/v1`; configure an Ollama API key and an available cloud model name. Set `OLLAMA_API_KEY` or use the Setup field for the model API key; the key still needs a matching `MODEL_API_KEY_SCOPE`. Cloud ticket inference also needs a separate, destination-matched consent. Ollama Cloud currently does not support structured outputs, so this connector omits `response_format` for that endpoint, asks for JSON in the system instruction, and validates the returned content in the workflow. Do not treat that instruction as a schema guarantee: malformed or incomplete model output must fall back or fail its deterministic checks. This connector uses chat completions and does not assume other OpenAI API features are supported. See [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) and [Ollama Cloud](https://docs.ollama.com/cloud).
 
 For local Ollama, set the native endpoint without a token:
 

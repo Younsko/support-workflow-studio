@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import os
+import secrets
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from app.control_plane.auth import Principal
+from app.control_plane.store import (
+    InvitationInvalid,
+    MembershipDenied,
+    PostgresControlPlaneStore,
+    WorkspaceConflict,
+    WorkspaceNotFound,
+)
+
+
+@pytest.fixture
+def store() -> PostgresControlPlaneStore:
+    dsn = os.getenv("POSTGRES_TEST_URL", "").strip()
+    if not dsn:
+        pytest.skip("Control-plane Postgres tests require POSTGRES_TEST_URL.")
+    pytest.importorskip("psycopg")
+    value = PostgresControlPlaneStore(dsn)
+    with value._connect() as connection:
+        connection.execute(
+            "TRUNCATE TABLE cp_audit_events, cp_invitations, cp_memberships, cp_workspaces CASCADE"
+        )
+    return value
+
+
+@pytest.fixture
+def owner() -> Principal:
+    return Principal(subject="oidc|owner", email="owner@example.test")
+
+
+def test_workspace_memberships_are_isolated_and_create_owner_audit(
+    store, owner
+) -> None:
+    first = store.create_workspace(owner, name="Support Team", slug="support-team")
+    second = store.create_workspace(
+        Principal(subject="oidc|other", email="other@example.test"),
+        name="Other Team",
+        slug="other-team",
+    )
+
+    assert store.get_workspace(str(first["id"]), owner.subject)["role"] == "Owner"
+    assert store.get_workspace(str(second["id"]), owner.subject) is None
+    assert [item["id"] for item in store.list_workspaces(owner.subject)] == [
+        first["id"]
+    ]
+    with pytest.raises(WorkspaceNotFound):
+        store.list_members(str(second["id"]), owner.subject)
+    assert (
+        store.list_audit_events(str(first["id"]), owner.subject)[0]["event_type"]
+        == "workspace.created"
+    )
+
+
+def test_invitation_is_hashed_one_time_email_bound_and_creates_assigned_role(
+    store, owner
+) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(UTC)
+    invitation = store.create_invitation(
+        workspace_id,
+        owner,
+        email="builder@example.test",
+        role="Builder",
+        token=token,
+        expires_at=now + timedelta(hours=4),
+        now=now,
+    )
+    invitation_id = str(invitation["id"])
+
+    with pytest.raises(InvitationInvalid):
+        store.redeem_invitation(
+            invitation_id,
+            token,
+            Principal(subject="oidc|wrong-email", email="wrong@example.test"),
+            now=now + timedelta(seconds=1),
+        )
+
+    result = store.redeem_invitation(
+        invitation_id,
+        token,
+        Principal(subject="oidc|builder", email="builder@example.test"),
+        now=now + timedelta(seconds=1),
+    )
+    assert result == {"workspace_id": workspace_id, "role": "Builder"}
+    with pytest.raises(InvitationInvalid):
+        store.redeem_invitation(
+            invitation_id,
+            token,
+            Principal(subject="oidc|builder", email="builder@example.test"),
+            now=now + timedelta(seconds=2),
+        )
+    assert {
+        item["subject"] for item in store.list_members(workspace_id, owner.subject)
+    } == {
+        owner.subject,
+        "oidc|builder",
+    }
+
+
+def test_invitation_expiry_revocation_and_admin_owner_grant_policy(
+    store, owner
+) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    now = datetime.now(UTC)
+    expired_token = secrets.token_urlsafe(32)
+    expired = store.create_invitation(
+        workspace_id,
+        owner,
+        email="expired@example.test",
+        role="Viewer",
+        token=expired_token,
+        expires_at=now - timedelta(seconds=1),
+        now=now - timedelta(hours=1),
+    )
+    with pytest.raises(InvitationInvalid):
+        store.redeem_invitation(
+            str(expired["id"]),
+            expired_token,
+            Principal(subject="oidc|expired", email="expired@example.test"),
+            now=now,
+        )
+
+    admin_token = secrets.token_urlsafe(32)
+    admin_invite = store.create_invitation(
+        workspace_id,
+        owner,
+        email="admin@example.test",
+        role="Admin",
+        token=admin_token,
+        expires_at=now + timedelta(hours=1),
+        now=now,
+    )
+    admin = Principal(subject="oidc|admin", email="admin@example.test")
+    store.redeem_invitation(str(admin_invite["id"]), admin_token, admin, now=now)
+    with pytest.raises(MembershipDenied):
+        store.create_invitation(
+            workspace_id,
+            admin,
+            email="future-owner@example.test",
+            role="Owner",
+            token=secrets.token_urlsafe(32),
+            expires_at=now + timedelta(hours=1),
+            now=now,
+        )
+
+    with pytest.raises(MembershipDenied):
+        store.create_invitation(
+            workspace_id,
+            admin,
+            email="second-future-owner@example.test",
+            role="Owner",
+            token=secrets.token_urlsafe(32),
+            expires_at=now + timedelta(hours=1),
+            now=now,
+        )
+
+    revoke_token = secrets.token_urlsafe(32)
+    revoke = store.create_invitation(
+        workspace_id,
+        owner,
+        email="revoke@example.test",
+        role="Viewer",
+        token=revoke_token,
+        expires_at=now + timedelta(hours=1),
+        now=now,
+    )
+    store.revoke_invitation(workspace_id, str(revoke["id"]), owner, now=now)
+    with pytest.raises(InvitationInvalid):
+        store.redeem_invitation(
+            str(revoke["id"]),
+            revoke_token,
+            Principal(subject="oidc|revoke", email="revoke@example.test"),
+            now=now + timedelta(seconds=1),
+        )
+
+
+def test_only_owner_can_grant_owner_and_last_owner_cannot_be_removed(
+    store, owner
+) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    now = datetime.now(UTC)
+    admin = Principal(subject="oidc|admin", email="admin@example.test")
+    invite_token = secrets.token_urlsafe(32)
+    invitation = store.create_invitation(
+        workspace_id,
+        owner,
+        email=admin.email,
+        role="Admin",
+        token=invite_token,
+        expires_at=now + timedelta(hours=2),
+        now=now,
+    )
+    store.redeem_invitation(str(invitation["id"]), invite_token, admin, now=now)
+    with pytest.raises(MembershipDenied):
+        store.change_member_role(
+            workspace_id, admin.subject, admin, role="Owner", now=now
+        )
+    with pytest.raises(MembershipDenied):
+        store.create_invitation(
+            workspace_id,
+            admin,
+            email="second-admin@example.test",
+            role="Admin",
+            token=secrets.token_urlsafe(32),
+            expires_at=now + timedelta(hours=1),
+            now=now,
+        )
+    with pytest.raises(WorkspaceConflict):
+        store.remove_member(workspace_id, owner.subject, owner, now=now)
+
+    store.change_member_role(workspace_id, admin.subject, owner, role="Owner", now=now)
+    store.remove_member(workspace_id, owner.subject, admin, now=now)
+    assert [
+        item["subject"] for item in store.list_members(workspace_id, admin.subject)
+    ] == [admin.subject]
+
+
+def test_control_plane_database_target_comparison_ignores_credentials() -> None:
+    pytest.importorskip("psycopg")
+
+    control_plane = PostgresControlPlaneStore.database_target(
+        "host=db.example.test port=5432 dbname=control user=control_user"
+    )
+    same_runner_database = PostgresControlPlaneStore.database_target(
+        "host=db.example.test port=5432 dbname=control user=runner_user"
+    )
+    runner_database = PostgresControlPlaneStore.database_target(
+        "host=db.example.test port=5432 dbname=runner user=runner_user"
+    )
+
+    assert control_plane == same_runner_database
+    assert control_plane != runner_database

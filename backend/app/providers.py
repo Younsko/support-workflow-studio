@@ -39,6 +39,13 @@ class ProviderConfig:
             base_url = "https://api.groq.com/openai/v1"
         groq_endpoint = (urlparse(base_url).hostname or "").casefold() == "api.groq.com"
         api_key = os.getenv("MODEL_API_KEY", "").strip()
+        ollama_cloud_key = os.getenv("OLLAMA_API_KEY", "").strip()
+        if (
+            not api_key
+            and provider == "openai-compatible"
+            and (urlparse(base_url).hostname or "").casefold() == "ollama.com"
+        ):
+            api_key = ollama_cloud_key
         model_key_is_configured = bool(api_key)
         if not api_key and provider == "openai-compatible" and groq_endpoint:
             api_key = groq_key
@@ -126,9 +133,9 @@ class ProviderConfig:
         consent = True
         if probe.requires_external_ticket_consent:
             consent = (
-                os.getenv(
-                    f"ALLOW_{prefix}_EXTERNAL_TICKET_INFERENCE", "false"
-                ).strip().lower()
+                os.getenv(f"ALLOW_{prefix}_EXTERNAL_TICKET_INFERENCE", "false")
+                .strip()
+                .lower()
                 in {"1", "true", "yes"}
                 and os.getenv(f"{prefix}_CONSENT_SCOPE", "").strip() == scope
             )
@@ -239,14 +246,20 @@ def _rate_limit_delay(response: object, attempt: int) -> float:
     if match:
         amount = float(match.group(1))
         unit = (match.group(2) or "s").lower()
-        delay = amount / 1000 if unit == "ms" else amount * 60 if unit == "m" else amount
+        delay = (
+            amount / 1000 if unit == "ms" else amount * 60 if unit == "m" else amount
+        )
     else:
         delay = float(2**attempt)
     return max(0.5, min(60.0, delay + attempt * 0.25))
 
 
 async def _post_with_rate_limit_retry(
-    client: httpx.AsyncClient, url: str, *, headers: dict[str, str], json: dict[str, object]
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json: dict[str, object],
 ) -> httpx.Response:
     request_body = json
     rate_limit_retries = 0
@@ -274,8 +287,12 @@ async def _post_with_rate_limit_retry(
                 retry_body = dict(request_body)
                 messages = request_body.get("messages")
                 if isinstance(messages, list):
-                    retry_messages = [dict(item) for item in messages if isinstance(item, dict)]
-                    if retry_messages and isinstance(retry_messages[0].get("content"), str):
+                    retry_messages = [
+                        dict(item) for item in messages if isinstance(item, dict)
+                    ]
+                    if retry_messages and isinstance(
+                        retry_messages[0].get("content"), str
+                    ):
                         retry_messages[0]["content"] += (
                             " Return every required field in the response schema; "
                             "include empty arrays instead of omitting fields."
@@ -415,7 +432,19 @@ async def generate(
                 else:
                     request_body["max_tokens"] = _model_output_limit()
                 if response_format:
-                    if (
+                    if host == "ollama.com":
+                        messages = request_body.get("messages")
+                        if (
+                            isinstance(messages, list)
+                            and messages
+                            and isinstance(messages[0], dict)
+                        ):
+                            messages[0]["content"] = (
+                                str(messages[0].get("content", ""))
+                                + " Return only one valid JSON object matching the requested fields. "
+                                "Do not add Markdown fences or commentary; the application validates the response."
+                            )
+                    elif (
                         response_format.get("type") == "json_schema"
                         and host != "api.groq.com"
                     ):

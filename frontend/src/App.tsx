@@ -7,6 +7,7 @@ import {
   Settings2, Languages, X,
 } from 'lucide-react'
 import WorkflowBuilder from './WorkflowBuilder'
+import RunWorkflowMap from './RunWorkflowMap'
 import SetupPanel from './SetupPanel'
 import { translate, type AppLocale } from './i18n'
 
@@ -390,6 +391,18 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
 
                   {run && <>
                     <div className="run-summary"><div className="run-state"><span className={`run-state-dot ${run.status === 'awaiting_human' ? 'waiting' : 'done'}`} />{run.status === 'awaiting_human' ? tr('Awaiting your review') : run.human_decision}</div><div className="run-meta"><span><Clock3 size={13} /> {(run.elapsed_ms / 1000).toFixed(1)}s</span><span><Layers3 size={13} /> {run.candidate_count} {tr(run.candidate_count === 1 ? 'candidate' : 'candidates')} · {run.revision_count} {tr(run.revision_count === 1 ? 'revision' : 'revisions')}</span><span className={`mode-chip ${run.provider_mode}`}>{run.provider_mode === 'demo' ? tr('SIMULATED') : run.model_name}</span></div></div>
+
+                    <RunWorkflowMap
+                      locale={locale}
+                      providerMode={run.provider_mode}
+                      stages={run.stages}
+                      planReviews={run.plan_reviews}
+                      workLanes={run.work_lanes}
+                      reviewers={run.reviewer_findings}
+                      status={run.status}
+                      ticketPublished={run.ticket_comment_published}
+                      publishAvailable={selected.source === 'jira-service-management' && Boolean(integrations?.jira_configured)}
+                    />
 
                     {selected.source === 'jira-service-management' && run.evidence.length === 0 && <div className="error-banner"><X size={15} />{tr('No approved knowledge source matched this request. The quality gate prevents publishing this draft.')}</div>}
 

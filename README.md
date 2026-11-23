@@ -51,7 +51,7 @@ The canvas can save and publish immutable workflow versions. Today, only the con
 - **Bounded execution:** strict compilation of the starter flow, configuration and fingerprint checks, immutable version binding, local idempotency keys, and persisted stage timing for published runs.
 - **Support orchestration:** level-one through level-three-plus triage, specialist investigation lanes, an architect/critic/revision loop with a quality threshold, independent verification, and evidence references.
 - **Knowledge sources:** an operator-approved local folder or read-only, scope-limited Confluence search with explicit consent.
-- **Model providers:** deterministic demo mode, local Ollama, and compatible OpenAI or Anthropic APIs, configured locally.
+- **Model providers:** deterministic demo mode, local Ollama, Ollama Cloud through its compatible API, and compatible OpenAI or Anthropic APIs, configured locally with destination-scoped credentials and explicit external-inference consent.
 - **Human control:** approve, edit, or reject a draft; re-review edits; and publish to Jira in a separate step. Low-quality drafts are blocked, and uncertain write outcomes are not retried automatically.
 - **Bilingual application UI:** English and French translations for the application, setup, and workflow canvas.
 
@@ -82,7 +82,7 @@ The application is built with React, TypeScript, and CSS. The visual direction w
 
 ## Architecture and current limits
 
-Workflow definitions, the support runtime, ITSM adapters, and model providers are separate parts of the system. Demo records are synthetic. The current application is a local, single-operator prototype: workflow versions and run state use SQLite, and there is no team identity or multi-tenant isolation yet.
+Workflow definitions, the support runtime, ITSM adapters, model providers, and a metadata-only control-plane foundation are separate parts of the system. Demo records are synthetic. The current support application is a local, single-operator prototype: workflow versions and run state use SQLite, and its ticket, connector, and review routes do not have team identity or tenant isolation. A standalone OIDC control-plane service now provides an initial workspace and membership API in a separate database; it is not connected to the support UI or ticket routes. See the [control-plane foundation notes](docs/control-plane-foundation.md).
 
 This project does not yet claim production SaaS or large-scale readiness. SQLite is the default store, with an opt-in Postgres runtime store for one runner host. The Compose package is a local installation preview, not the planned authenticated customer runner. Remaining work includes identity and isolated workspaces, runner enrollment, resumable step execution, approval roles, more connectors, private data paths, observability, backups, and load testing. See the [SaaS readiness plan](docs/saas-readiness.md) and [threat model](docs/threat-model.md) for details.
 
