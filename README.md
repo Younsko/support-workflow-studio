@@ -90,6 +90,7 @@ Les tests backend utilisent des données synthétiques :
 
 ```sh
 python -m pytest backend/tests -q
+python -m ruff check backend/app backend/tests
 npm --prefix frontend run build
 ```
 
