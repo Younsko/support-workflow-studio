@@ -65,6 +65,8 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
   const [manualIds, setManualIds] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
+  const [currentStep, setCurrentStep] = useState(0)
+  const stepTitles = [t('Ticket source'), t('Approved knowledge'), t('Model provider'), t('Triage and escalation rules'), t('Review settings')]
 
   useEffect(() => {
     request<SetupValues>('/setup')
@@ -131,6 +133,7 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
 
   async function save(event: FormEvent) {
     event.preventDefault()
+    if (currentStep < 4) return
     setSaving(true); setError(''); setResult('')
     try {
       const outcome = await request<{ jira_connected: boolean; jira_queue_sample_count: number; knowledge: { mode: string; available: boolean; source_count: number }; model_provider: string; model_name: string }>('/setup', {
@@ -166,15 +169,45 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
     else update(key, raw as never)
   }
   const savedKeyMatchesTarget = savedModelTarget === modelKeyTarget(values.model_provider, values.model_base_url)
+  const configuredRuleCount = [values.n1_keywords, values.n3_keywords, values.n3_plus_keywords]
+    .flatMap((keywords) => keywords.split(',')).filter((keyword) => keyword.trim()).length
+  const ticketSummary = values.private_local_mode
+    ? t('Private local mode is active.')
+    : values.jira_base_url
+      ? `${values.jira_base_url}${values.jira_queue_id ? ` · ${t('Queue')} ${values.jira_queue_id}` : ''} · ${t('Configured · not tested')}`
+      : t('Synthetic ticket queue · local demo')
+  const knowledgeSummary = values.knowledge_dir
+    ? `${values.knowledge_dir} · ${t('Will be checked on save')}`
+    : t('No custom folder · demo knowledge only')
+  const modelConnectionSummary = values.model_provider === 'demo'
+    ? t('Demo provider · no external model call')
+    : values.model_provider === 'ollama-local'
+      ? t('Local model · not tested')
+      : values.model_api_key_configured && savedKeyMatchesTarget && !modelKey
+        ? t('Model saved · not tested')
+        : modelKey
+          ? t('Key entered · will be saved; connection not tested')
+        : t('Not configured')
+  const modelNameSummary = `${values.model_provider} · ${values.model_name}`
+  const automaticIntakeSummary = values.private_local_mode
+    ? t('Disabled in private mode')
+    : values.auto_triage_new_tickets
+      ? values.jira_base_url ? t('Enabled') : t('Enabled after Jira connection')
+      : t('Disabled')
 
   return (
     <div className="modal-backdrop setup-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <form className="setup-modal" onSubmit={save} lang={locale}>
+      <form className="setup-modal setup-wizard" onSubmit={save} lang={locale}>
       <div className="setup-header"><div><span className="section-label"><PlugZap size={13} /> {t('WORKSPACE SETUP')}</span><h2>{t('Connect your support workflow')}</h2><p>{t('Configure a ticket source, approved knowledge, triage rules, and a model provider.')}</p></div><button className="icon-button" type="button" onClick={onClose} aria-label={t('Close setup')}><X size={18} /></button></div>
         {loading ? <div className="setup-loading">{t('Loading local settings…')}</div> : <>
+          <nav className="setup-wizard-progress" aria-label={t('Setup progress')}>
+            <div className="setup-wizard-steps">{stepTitles.map((title, index) => <button type="button" key={title} className={currentStep === index ? 'active' : currentStep > index ? 'complete' : ''} aria-current={currentStep === index ? 'step' : undefined} onClick={() => { if (index <= currentStep) setCurrentStep(index) }}><span>{index + 1}</span>{title}</button>)}</div>
+            <div className="setup-wizard-progress-track"><span style={{ width: `${(currentStep / (stepTitles.length - 1)) * 100}%` }} /></div>
+            <small>{t('Step')} {currentStep + 1} {t('of')} {stepTitles.length} · {stepTitles[currentStep]}</small>
+          </nav>
           {values.private_local_mode && <div className="setup-notice"><ShieldCheck size={16} /> {t('Private local mode is active.')} {t('External Jira connections are disabled by the server.')}</div>}
           <div className="setup-grid">
-            <section className="setup-card"><div className="setup-card-title"><span>01</span><div><h3>{t('Ticket source')}</h3><p>{t('Jira Service Management Cloud · the app can find desks and queues you can access.')}</p></div></div>
+            {currentStep === 0 && <section className="setup-card"><div className="setup-card-title"><span>01</span><div><h3>{t('Ticket source')}</h3><p>{t('Jira Service Management Cloud · the app can find desks and queues you can access.')}</p></div></div>
               <label>{t('Jira site URL')}<input disabled={values.private_local_mode} value={values.jira_base_url} onChange={(event) => { if (event.target.value !== values.jira_base_url) { setWorkspaces([]); setQueues([]); update('jira_service_desk_id', ''); update('jira_queue_id', '') } setField('jira_base_url')(event) }} placeholder="https://example.atlassian.net" autoComplete="url" /></label>
               <div className="setup-two"><label>{t('Account email')}<input disabled={values.private_local_mode} value={values.jira_email} onChange={setField('jira_email')} placeholder="agent@example.com" autoComplete="username" /></label><label>{t('API token')}<input disabled={values.private_local_mode} type="password" value={token} onChange={(e) => { setToken(e.target.value); setResult('') }} placeholder={values.jira_token_configured ? t('Saved locally — leave blank to keep') : t('Paste Jira API token')} autoComplete="new-password" /></label></div>
               <div className="setup-discovery-actions"><button className="setup-discover-button" type="button" onClick={() => void discoverWorkspaces()} disabled={values.private_local_mode || discoveringWorkspaces || !values.jira_base_url || !values.jira_email || (!token && !values.jira_token_configured)}>{discoveringWorkspaces ? t('Loading service desks…') : t('Find service desks')}</button><button className="setup-manual-toggle" type="button" disabled={values.private_local_mode} onClick={() => setManualIds((current) => !current)}>{manualIds ? t('Choose from Jira instead') : t('Enter IDs manually')}</button></div>
@@ -182,22 +215,16 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
                 ? <div className="setup-two"><label>{t('Service desk ID')}<input disabled={values.private_local_mode} inputMode="numeric" value={values.jira_service_desk_id} onChange={setField('jira_service_desk_id')} placeholder="1" /></label><label>{t('Queue ID')}<input disabled={values.private_local_mode} inputMode="numeric" value={values.jira_queue_id} onChange={setField('jira_queue_id')} placeholder="5" /></label></div>
                 : <div className="setup-two"><label>{t('Service desk')}<select value={values.jira_service_desk_id} onChange={(event) => void selectWorkspace(event.target.value)} disabled={values.private_local_mode || !workspaces.length || discoveringQueues}><option value="">{discoveringQueues ? t('Loading queues…') : workspaces.length ? t('Choose a service desk') : t('Find service desks first')}</option>{values.jira_service_desk_id && !workspaces.some((item) => item.id === values.jira_service_desk_id) && <option value={values.jira_service_desk_id}>{t('Saved selection · ')}{values.jira_service_desk_id}</option>}{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}{item.key ? ` · ${item.key}` : ''}</option>)}</select></label><label>{t('Queue')}<select value={values.jira_queue_id} onChange={(event) => update('jira_queue_id', event.target.value)} disabled={values.private_local_mode || !queues.length}><option value="">{queues.length ? t('Choose a queue') : t('Choose a service desk first')}</option>{values.jira_queue_id && !queues.some((item) => item.id === values.jira_queue_id) && <option value={values.jira_queue_id}>{t('Saved selection · ')}{values.jira_queue_id}</option>}{queues.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>}
               <small className="setup-help">{t('The token is written only to this machine’s ignored .env file. It is never sent back to the browser.')}</small>
-            </section>
-            <section className="setup-card"><div className="setup-card-title"><span>02</span><div><h3>{t('Approved knowledge')}</h3><p>{t('Use a local folder with the source allowlist file.')}</p></div></div>
+            </section>}
+            {currentStep === 1 && <section className="setup-card"><div className="setup-card-title"><span>02</span><div><h3>{t('Approved knowledge')}</h3><p>{t('Use a local folder with the source allowlist file.')}</p></div></div>
               <label>{t('Knowledge directory')}<input value={values.knowledge_dir} onChange={setField('knowledge_dir')} placeholder="C:\\support\\approved-runbooks" /></label>
               <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('Only explicitly allowlisted Markdown and text sources are used for ticket evidence.')}</div>
               <h4>{t('Automatic intake')}</h4>
               <label className="setup-checkbox"><input type="checkbox" checked={values.auto_triage_new_tickets} onChange={setField('auto_triage_new_tickets')} /> {t('Automatically draft triage for tickets arriving after setup is enabled')}</label>
               <div className="setup-two"><label>{t('Poll interval (seconds)')}<input type="number" min={15} max={900} value={values.poll_interval_seconds} onChange={setField('poll_interval_seconds')} /></label><label>{t('Draft limit per poll')}<input type="number" min={1} max={10} value={values.max_auto_triage_per_poll} onChange={setField('max_auto_triage_per_poll')} /></label></div>
               <p className="setup-help">{t('Automatic intake creates drafts only. It never approves or publishes a reply.')}</p>
-            </section>
-            <section className="setup-card setup-rules"><div className="setup-card-title"><span>03</span><div><h3>{t('Triage and escalation rules')}</h3><p>{t('Add comma-separated phrases to the built-in signals; matches set a provisional tier. Other tickets default to N2 investigation.')}</p></div></div>
-              <label>{t('N1 · documented how-to or routine support')}<textarea rows={2} value={values.n1_keywords} onChange={setField('n1_keywords')} placeholder="how do i, how to, password reset, setup instructions, where can i" /></label>
-              <label>{t('N3+ · immediate specialist review')}<textarea rows={3} value={values.n3_plus_keywords} onChange={setField('n3_plus_keywords')} placeholder="security incident, data loss, production outage, phishing" /></label>
-              <label>{t('N3 · recurring or engineering review')}<textarea rows={3} value={values.n3_keywords} onChange={setField('n3_keywords')} placeholder="repeated, recurring, multiple users, regression, crash, bug" /></label>
-              <div className="setup-notice subtle-notice"><CircleAlert size={15} /> {t('Rules are advisory classification. They do not trigger remediation or skip human review.')}</div>
-            </section>
-            <section className="setup-card"><div className="setup-card-title"><span>04</span><div><h3>{t('Model provider')}</h3><p>{t('Choose a local model or bring a provider key. Saving settings does not call the model.')}</p></div></div>
+            </section>}
+            {currentStep === 2 && <section className="setup-card"><div className="setup-card-title"><span>03</span><div><h3>{t('Model provider')}</h3><p>{t('Choose a local model or bring a provider key. Saving settings does not call the model.')}</p></div></div>
               <label>{t('Provider')}<select value={values.model_provider} onChange={(event) => { update('model_provider', event.target.value); update('external_model_disclosure_accepted', false); setModelKey(''); setResult('') }}>
                 <option value="demo">{t('Demo · synthetic responses')}</option>
                 <option value="openai-compatible" disabled={values.private_local_mode}>{t('OpenAI-compatible API · includes Groq')}</option>
@@ -218,11 +245,27 @@ export default function SetupPanel({ onClose, onSaved, locale = 'en' }: { onClos
               {values.model_provider === 'ollama-local' && <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('Only a loopback Ollama URL is accepted. Ticket content stays on this machine when the runtime uses this local provider.')}</div>}
               {values.model_provider === 'demo' && <div className="setup-notice subtle-notice"><ShieldCheck size={15} /> {t('Demo mode uses synthetic responses and does not call an external model.')}</div>}
               <small className="setup-help">{t('API keys are written to this machine’s ignored .env file and are never returned to the browser. This local setup is not the hosted runner secret store.')}</small>
-            </section>
+            </section>}
+            {currentStep === 3 && <section className="setup-card setup-rules"><div className="setup-card-title"><span>04</span><div><h3>{t('Triage and escalation rules')}</h3><p>{t('Add comma-separated phrases to the built-in signals; matches set a provisional tier. Other tickets default to N2 investigation.')}</p></div></div>
+              <label>{t('N1 · documented how-to or routine support')}<textarea rows={2} value={values.n1_keywords} onChange={setField('n1_keywords')} placeholder="how do i, how to, password reset, setup instructions, where can i" /></label>
+              <label>{t('N3+ · immediate specialist review')}<textarea rows={3} value={values.n3_plus_keywords} onChange={setField('n3_plus_keywords')} placeholder="security incident, data loss, production outage, phishing" /></label>
+              <label>{t('N3 · recurring or engineering review')}<textarea rows={3} value={values.n3_keywords} onChange={setField('n3_keywords')} placeholder="repeated, recurring, multiple users, regression, crash, bug" /></label>
+              <div className="setup-notice subtle-notice"><CircleAlert size={15} /> {t('Rules are advisory classification. They do not trigger remediation or skip human review.')}</div>
+            </section>}
+            {currentStep === 4 && <section className="setup-card setup-review-card"><div className="setup-card-title"><span>✓</span><div><h3>{t('Configuration summary')}</h3><p>{t('Review these choices before saving. Saving stores local settings; it does not publish or send a support reply.')}</p></div></div>
+              <dl className="setup-review-list">
+                <div><dt>{t('Ticket source')}</dt><dd>{ticketSummary}</dd></div>
+                <div><dt>{t('Approved knowledge')}</dt><dd>{knowledgeSummary}</dd></div>
+                <div><dt>{t('Model provider')}</dt><dd>{modelNameSummary}<small>{modelConnectionSummary}</small></dd></div>
+                <div><dt>{t('Automatic intake summary')}</dt><dd>{automaticIntakeSummary} · {values.poll_interval_seconds}s · {values.max_auto_triage_per_poll} {t('tickets per poll')}<small>{t('Automatic intake creates drafts only. It never approves or publishes a reply.')}</small></dd></div>
+                <div><dt>{t('Triage and escalation rules')}</dt><dd>{configuredRuleCount ? `${configuredRuleCount} ${t('Rules configured')}` : t('No custom phrases')}</dd></div>
+              </dl>
+              <div className="setup-notice"><ShieldCheck size={15} /> {t('This local prototype saves setup values to its local .env file. External model calls happen only when you start a workflow.')}</div>
+            </section>}
           </div>
-          {error && <div className="setup-feedback error" role="alert">{error}</div>}
+          {error && <div className="setup-feedback error" role="alert">{t(error)}</div>}
           {result && <div className="setup-feedback success" role="status"><CheckCircle2 size={16} /> {result}</div>}
-          <div className="setup-actions"><span>{t('Changes are stored in the local ignored .env file.')}</span><button className="quiet-button" type="button" onClick={onClose}>{t('Cancel')}</button><button className="primary-button" disabled={saving}>{saving ? t('Saving settings…') : t('Save settings')}</button></div>
+          <div className="setup-actions"><span>{currentStep === 4 ? t('Review settings') : `${t('Step')} ${currentStep + 1} ${t('of')} ${stepTitles.length}`}</span><div className="setup-wizard-buttons"><button className="quiet-button" type="button" onClick={onClose}>{t('Cancel')}</button>{currentStep > 0 && <button className="quiet-button" type="button" onClick={() => setCurrentStep((step) => Math.max(0, step - 1))}>{t('Back')}</button>}{currentStep < 4 ? <button className="primary-button" type="button" onClick={() => setCurrentStep((step) => Math.min(4, step + 1))}>{t('Continue')}</button> : <button className="primary-button" type="submit" disabled={saving}>{saving ? t('Saving settings…') : t('Review & save')}</button>}</div></div>
         </>}
       </form>
     </div>
