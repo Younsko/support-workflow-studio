@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import math
 import os
@@ -11,8 +10,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from .knowledge import retrieve
-from .providers import ProviderConfig, generate
+from .knowledge import retrieve_configured
+from .providers import ProviderConfig, ProviderError, generate
 from .schemas import (
     CaseRecord,
     CouncilOption,
@@ -22,6 +21,7 @@ from .schemas import (
     WorkflowResult,
     WorkLaneResult,
 )
+from .ticket_snapshot import jira_ticket_fingerprint
 
 PLAN_CRITIC_SCHEMA: dict[str, Any] = {
     "name": "plan_critic_review",
@@ -43,12 +43,23 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def content_fingerprint(summary: str, description: str) -> str:
-    """Fingerprint the exact ticket text reviewed by this workflow run."""
-    payload = json.dumps(
-        [summary, description], ensure_ascii=False, separators=(",", ":")
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+def content_fingerprint(summary: str, description: str, status: str = "") -> str:
+    """Fingerprint the Jira fields currently refreshed before approval and publish."""
+    return jira_ticket_fingerprint(summary, description, status)
+
+
+def _evidence_summary(row: dict[str, str]) -> dict[str, str]:
+    summary = {
+        "id": row["id"],
+        "title": row["title"],
+        "excerpt": row["body"][:180],
+        "category": row.get("category", "local-knowledge"),
+    }
+    for key in ("source_version", "last_modified", "space_key"):
+        value = row.get(key)
+        if value:
+            summary[key] = value
+    return summary
 
 
 def _category(text: str) -> tuple[str, str, float]:
@@ -527,6 +538,13 @@ async def _model_call(
     json_mode: bool = False,
     json_schema: dict[str, Any] | None = None,
 ) -> str:
+    if (
+        config.requires_external_ticket_consent
+        and not config.external_ticket_inference_allowed
+    ):
+        raise ProviderError(
+            "External ticket inference is not approved for this model destination."
+        )
     if not config.live:
         return ""
     if counter[0] >= config.max_calls:
@@ -556,9 +574,14 @@ async def run_workflow(
     config: ProviderConfig,
     candidate_count: int = 2,
     include_model_council: bool = False,
+    *,
+    source_snapshot_hash: str | None = None,
 ) -> WorkflowResult:
     started = time.perf_counter()
     run_id = f"RUN-{uuid.uuid4().hex[:8].upper()}"
+    reviewed_snapshot_hash = source_snapshot_hash or content_fingerprint(
+        case.title, case.body, case.status
+    )
     stages: list[StageRecord] = []
     counter = [0]
     ticket_text = f"Title: {case.title}\nImpact: {case.impact}\nRequest: {case.body}"
@@ -593,14 +616,14 @@ async def run_workflow(
         )
     )
 
-    evidence = retrieve(ticket_text)
+    evidence = await retrieve_configured(ticket_text)
     stages.append(
         StageRecord(
             id="evidence",
             label="Knowledge retrieval",
             status="complete",
             detail=(
-                f"{len(evidence)} local source(s) matched"
+                f"{len(evidence)} {('Confluence' if evidence and evidence[0].get('category') == 'confluence' else 'local')} source(s) matched"
                 if evidence
                 else "No approved knowledge source matched; human specialist review required"
             ),
@@ -847,7 +870,7 @@ async def run_workflow(
                     id="model-council",
                     label="Blind model council",
                     status="warning",
-                    detail="Live council not run; distinct secondary proposal and independent judge profiles are required.",
+                    detail="Live council not run; distinct secondary and judge profiles need destination-scoped keys and consent before ticket content can be sent.",
                     actor="Configuration required",
                     elapsed_ms=0,
                 )
@@ -1043,7 +1066,7 @@ async def run_workflow(
             model_name=config.model if config.live else "Synthetic demo · no model calls",
             started_at=_now(),
             elapsed_ms=int((time.perf_counter() - started) * 1000),
-            source_snapshot_hash=content_fingerprint(case.title, case.body),
+            source_snapshot_hash=reviewed_snapshot_hash,
             score=plan_score,
             rounds=rounds,
             candidate_count=0,
@@ -1052,10 +1075,7 @@ async def run_workflow(
             support_level=support_level,
             support_route_reason=support_route_reason,
             confidence=confidence,
-            evidence=[
-                {"id": row["id"], "title": row["title"], "excerpt": row["body"][:180]}
-                for row in evidence
-            ],
+            evidence=[_evidence_summary(row) for row in evidence],
             plan=plan,
             plan_reviews=plan_reviews,
             draft="",
@@ -1311,7 +1331,7 @@ async def run_workflow(
         model_name=config.model if config.live else "Synthetic demo · no model calls",
         started_at=_now(),
         elapsed_ms=int((time.perf_counter() - started) * 1000),
-        source_snapshot_hash=content_fingerprint(case.title, case.body),
+        source_snapshot_hash=reviewed_snapshot_hash,
         score=score,
         rounds=rounds,
         revision_count=revision_count,
@@ -1321,10 +1341,7 @@ async def run_workflow(
         support_level=support_level,
         support_route_reason=support_route_reason,
         confidence=confidence,
-        evidence=[
-            {"id": row["id"], "title": row["title"], "excerpt": row["body"][:180]}
-            for row in evidence
-        ],
+        evidence=[_evidence_summary(row) for row in evidence],
         plan=plan,
         plan_reviews=plan_reviews,
         draft=selected,

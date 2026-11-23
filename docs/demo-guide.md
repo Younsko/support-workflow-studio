@@ -57,7 +57,7 @@ These labels are provisional routing suggestions from deterministic demo rules. 
 ## Be precise about current limits
 
 - The Jira connector is a local, single-operator prototype using a configured API token; it is not the distributable OAuth app required for a company pilot.
-- Approval and monitor state live in memory. Restarting the server loses them.
+- Approval/run records and Jira monitor checkpoints persist in local SQLite. Restart recovery is single-process only; there are no distributed leases, and an interrupted public comment still requires a manual Jira check before retrying.
 - The GitHub code-change path is not implemented yet. The target repository, allowed code paths, and validation commands are waiting for the operator's specification. The intended next path is a reviewable patch, verified run, dedicated branch, then a separate human commit approval.
 - The optional model council and live workflow depend on configured model access and can add latency and cost.
 

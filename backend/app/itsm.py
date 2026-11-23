@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from .schemas import CaseRecord
+from .ticket_snapshot import jira_ticket_fingerprint
 
 
 class ITSMConfigurationError(RuntimeError):
@@ -382,7 +383,7 @@ async def get_request_details(config: JiraConfig, issue_key: str) -> dict[str, o
     ):
         raise JiraRequestError("Jira request response has an unsupported shape.")
     request_values = payload["requestFieldValues"]
-    summary = next(
+    summary_value = next(
         (
             item.get("value")
             for item in request_values
@@ -390,7 +391,7 @@ async def get_request_details(config: JiraConfig, issue_key: str) -> dict[str, o
         ),
         issue_key,
     )
-    description = next(
+    description_value = next(
         (
             item.get("value")
             for item in request_values
@@ -400,11 +401,17 @@ async def get_request_details(config: JiraConfig, issue_key: str) -> dict[str, o
     )
     current_status = payload.get("currentStatus")
     current_status = current_status if isinstance(current_status, dict) else {}
+    normalized_summary = str(summary_value)
+    normalized_description = _extract_text(description_value)
+    normalized_status = str(current_status.get("status") or "")
     return {
-        "summary": str(summary)[:120],
-        "description": _extract_text(description)[:4000],
-        "status": str(current_status.get("status") or ""),
+        "summary": normalized_summary[:120],
+        "description": normalized_description[:4000],
+        "status": normalized_status,
         "status_category": str(current_status.get("statusCategory") or ""),
+        "source_snapshot_hash": jira_ticket_fingerprint(
+            normalized_summary, normalized_description, normalized_status
+        ),
     }
 
 

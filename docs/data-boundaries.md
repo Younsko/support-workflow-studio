@@ -8,7 +8,9 @@ Author new examples as synthetic cases. Removing a few fields from a real ticket
 
 ## Local use
 
-The operator selects a knowledge directory and an explicit allowlist of approved guidance files. The app checks the manifest shape, but cannot verify organizational approval. For confidential cases, use a separate local copy, minimize the request text, verify the selected inference provider and its data handling, and obtain the necessary authorization before connecting a ticket source.
+The operator selects either a local knowledge directory with an explicit allowlist or a read-only Confluence Cloud site and space allowlist. The app checks the local manifest shape, but cannot verify organizational approval; a Confluence space selection is an operator trust boundary and does not establish that every page is approved. Confluence receives up to eight minimized search terms derived from the ticket, not the full ticket body; the terms may still contain names or sensitive words and are not anonymized. The connection check is user-triggered, sends no ticket content, and does not run on Setup save. Retrieved page content is untrusted evidence. The selected model receives the ticket and evidence needed for its run under the separately configured model consent.
+
+Confluence credentials stay in the local ignored `.env` file in this prototype. This does not provide hosted runner secret delivery, tenant isolation, or encrypted browser-to-runner handling. For confidential cases, use a separate local copy, review the selected spaces and provider data handling, minimize the request text, and obtain the necessary authorization before connecting ticket sources.
 
 `PRIVATE_LOCAL_MODE=true` requires local Ollama inference and blocks Jira reads and writes. It is a prototype guard, not an access-control system. The default public demo uses synthetic data and makes no model calls.
 

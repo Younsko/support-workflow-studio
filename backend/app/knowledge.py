@@ -6,6 +6,13 @@ import os
 import re
 from pathlib import Path, PurePosixPath
 
+from .confluence import (
+    ConfluenceAdapter,
+    ConfluenceConfigurationError,
+    ConfluenceRequestError,
+    configured_confluence,
+)
+
 MAX_FILES = 200
 MAX_FILE_BYTES = 256_000
 MAX_TOTAL_BYTES = 5_000_000
@@ -75,6 +82,10 @@ KNOWLEDGE = [
 
 
 class KnowledgeConfigurationError(RuntimeError):
+    pass
+
+
+class KnowledgeRequestError(RuntimeError):
     pass
 
 
@@ -219,6 +230,59 @@ def _read_local_sources(directory: str) -> list[dict[str, str]]:
 
 
 def knowledge_status() -> dict[str, object]:
+    provider = os.getenv("KNOWLEDGE_PROVIDER", "local").strip().lower() or "local"
+    if provider == "confluence":
+        if os.getenv("PRIVATE_LOCAL_MODE", "false").strip().lower() in {"1", "true", "yes"}:
+            return {
+                "mode": "confluence",
+                "configured": True,
+                "available": False,
+                "source_count": 0,
+                "message": "Confluence is disabled while PRIVATE_LOCAL_MODE is active.",
+            }
+        try:
+            config = configured_confluence()
+        except ConfluenceConfigurationError as exc:
+            return {
+                "mode": "confluence",
+                "configured": False,
+                "available": False,
+                "source_count": 0,
+                "message": str(exc),
+            }
+        if config is None:
+            return {
+                "mode": "confluence",
+                "configured": False,
+                "available": False,
+                "source_count": 0,
+                "message": "Configure a Confluence Cloud site, account, token, and space allowlist.",
+            }
+        consented = (
+            os.getenv("CONFLUENCE_TICKET_SEARCH_ALLOWED", "false").strip().lower()
+            in {"1", "true", "yes"}
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip()
+            == config.consent_scope
+        )
+        return {
+            "mode": "confluence",
+            "configured": True,
+            "available": consented,
+            "source_count": 0,
+            "message": (
+                "Ticket search terms are approved for the selected Confluence site and spaces; the connection is checked when requested."
+                if consented
+                else "Confirm that minimized ticket search terms may be sent to the selected Confluence site and spaces."
+            ),
+        }
+    if provider not in {"local", "synthetic"}:
+        return {
+            "mode": provider,
+            "configured": False,
+            "available": False,
+            "source_count": 0,
+            "message": "The selected knowledge provider is unsupported.",
+        }
     directory = _configured_directory()
     if not directory:
         return {
@@ -273,3 +337,34 @@ def retrieve(query: str) -> list[dict[str, str]]:
     best = relevance(ranked[0]) if ranked else 0
     minimum = max(1, (best * 3 + 3) // 4)
     return [dict(item) for item in ranked[:2] if relevance(item) >= minimum]
+
+
+async def retrieve_configured(query: str) -> list[dict[str, str]]:
+    """Retrieve from the selected source, with explicit scope-bound remote consent."""
+    provider = os.getenv("KNOWLEDGE_PROVIDER", "local").strip().lower() or "local"
+    if provider != "confluence":
+        return retrieve(query)
+    if os.getenv("PRIVATE_LOCAL_MODE", "false").strip().lower() in {"1", "true", "yes"}:
+        raise KnowledgeConfigurationError(
+            "Confluence retrieval is disabled while PRIVATE_LOCAL_MODE is active."
+        )
+    try:
+        config = configured_confluence()
+    except ConfluenceConfigurationError as exc:
+        raise KnowledgeConfigurationError(str(exc)) from exc
+    if config is None:
+        raise KnowledgeConfigurationError("Confluence knowledge is not configured.")
+    consented = (
+        os.getenv("CONFLUENCE_TICKET_SEARCH_ALLOWED", "false").strip().lower()
+        in {"1", "true", "yes"}
+        and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip()
+        == config.consent_scope
+    )
+    if not consented:
+        raise KnowledgeConfigurationError(
+            "Confluence ticket-search consent is missing for the current site and space selection."
+        )
+    try:
+        return await ConfluenceAdapter(config).search(query)
+    except ConfluenceRequestError as exc:
+        raise KnowledgeRequestError(str(exc)) from exc

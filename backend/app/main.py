@@ -20,6 +20,12 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
 from .fixtures import demo_cases
+from .confluence import (
+    ConfluenceAdapter,
+    ConfluenceConfig,
+    ConfluenceConfigurationError,
+    ConfluenceRequestError,
+)
 from .itsm import (
     ITSMConfigurationError,
     ITSMOutcomeUnknown,
@@ -27,8 +33,8 @@ from .itsm import (
     JiraConfig,
     create_itsm_adapter,
 )
-from .knowledge import knowledge_status
-from .providers import ProviderConfig, ProviderError
+from .knowledge import KnowledgeConfigurationError, KnowledgeRequestError, knowledge_status
+from .providers import ProviderConfig, ProviderError, model_destination_scope
 from .schemas import (
     CaseRecord,
     DecisionRequest,
@@ -39,24 +45,39 @@ from .schemas import (
     WorkspaceMetrics,
 )
 from .store import LocalStore, configured_store
+from .workflow_api import router as workflow_definitions_router
 from .workflow import content_fingerprint, review_edited_draft, run_workflow
 
 load_dotenv()
 
 
 class SetupRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     jira_base_url: str = Field(default="", max_length=255)
     jira_email: str = Field(default="", max_length=255)
     jira_api_token: str = Field(default="", max_length=2000, repr=False)
     jira_service_desk_id: str = Field(default="", max_length=40)
     jira_queue_id: str = Field(default="", max_length=40)
     knowledge_dir: str = Field(default="", max_length=2048)
+    knowledge_provider: str = Field(default="local", max_length=20)
+    confluence_base_url: str = Field(default="", max_length=255)
+    confluence_email: str = Field(default="", max_length=255)
+    confluence_api_token: str = Field(default="", max_length=2000, repr=False)
+    confluence_space_keys: str = Field(default="", max_length=640)
+    confluence_ticket_search_allowed: bool = False
     auto_triage_new_tickets: bool = False
     poll_interval_seconds: int = Field(default=60, ge=15, le=900)
     max_auto_triage_per_poll: int = Field(default=5, ge=1, le=10)
     n1_keywords: str = Field(default="", max_length=2000)
     n3_plus_keywords: str = Field(default="", max_length=2000)
     n3_keywords: str = Field(default="", max_length=2000)
+    model_provider: str | None = Field(default=None, max_length=40)
+    model_name: str | None = Field(default=None, max_length=160)
+    model_base_url: str | None = Field(default=None, max_length=255)
+    model_api_key: str = Field(default="", max_length=2000, repr=False)
+    clear_model_api_key: bool = False
+    external_model_disclosure_accepted: bool | None = None
 
 
 class JiraDiscoveryRequest(BaseModel):
@@ -64,6 +85,13 @@ class JiraDiscoveryRequest(BaseModel):
     jira_email: str = Field(max_length=255)
     jira_api_token: str = Field(default="", max_length=2000, repr=False)
     service_desk_id: str = Field(default="", max_length=40)
+
+
+class ConfluenceCheckRequest(BaseModel):
+    confluence_base_url: str = Field(max_length=255)
+    confluence_email: str = Field(max_length=255)
+    confluence_api_token: str = Field(default="", max_length=2000, repr=False)
+    confluence_space_keys: str = Field(max_length=640)
 
 
 JIRA_MONITOR_STATE: dict[str, object] = {
@@ -91,7 +119,13 @@ SETUP_WRITE_LOCK = asyncio.Lock()
 
 
 def _persist_local_setup(
-    values: dict[str, str], api_token: str, remove_api_token: bool
+    values: dict[str, str],
+    api_token: str,
+    remove_api_token: bool,
+    model_api_key: str = "",
+    remove_model_api_key: bool = False,
+    confluence_api_token: str = "",
+    remove_confluence_api_token: bool = False,
 ) -> None:
     """Atomically update ignored local configuration, then apply it in-process."""
     env_path = Path(__file__).resolve().parents[2] / ".env"
@@ -109,6 +143,15 @@ def _persist_local_setup(
             set_key(str(staged_path), "JSM_API_TOKEN", api_token, quote_mode="always")
         elif remove_api_token:
             unset_key(str(staged_path), "JSM_API_TOKEN")
+        if model_api_key:
+            set_key(str(staged_path), "MODEL_API_KEY", model_api_key, quote_mode="always")
+        elif remove_model_api_key:
+            unset_key(str(staged_path), "MODEL_API_KEY")
+            unset_key(str(staged_path), "MODEL_API_KEY_SCOPE")
+        if confluence_api_token:
+            set_key(str(staged_path), "CONFLUENCE_API_TOKEN", confluence_api_token, quote_mode="always")
+        elif remove_confluence_api_token:
+            unset_key(str(staged_path), "CONFLUENCE_API_TOKEN")
         if os.name != "nt":
             staged_path.chmod(0o600)
         os.replace(staged_path, env_path)
@@ -121,6 +164,15 @@ def _persist_local_setup(
         os.environ["JSM_API_TOKEN"] = api_token
     elif remove_api_token:
         os.environ.pop("JSM_API_TOKEN", None)
+    if model_api_key:
+        os.environ["MODEL_API_KEY"] = model_api_key
+    elif remove_model_api_key:
+        os.environ.pop("MODEL_API_KEY", None)
+        os.environ.pop("MODEL_API_KEY_SCOPE", None)
+    if confluence_api_token:
+        os.environ["CONFLUENCE_API_TOKEN"] = confluence_api_token
+    elif remove_confluence_api_token:
+        os.environ.pop("CONFLUENCE_API_TOKEN", None)
 
 
 def _save_case(case: CaseRecord) -> None:
@@ -128,13 +180,73 @@ def _save_case(case: CaseRecord) -> None:
         STATE_STORE.save_case(case)
 
 
-def _save_run(run: WorkflowResult) -> None:
+def _save_run(
+    run: WorkflowResult,
+    *,
+    audit_event: tuple[str, str, str, dict[str, object]] | None = None,
+) -> None:
     if STATE_STORE is not None:
-        STATE_STORE.save_run(run)
+        STATE_STORE.save_run(run, audit_event=audit_event)
 
 
 def _enabled_env(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _monitor_checkpoint() -> dict[str, object]:
+    return {
+        "seen_keys": sorted(JIRA_SEEN_KEYS),
+        "pending_attempts": dict(JIRA_PENDING_TRIAGE_ATTEMPTS),
+        "local_tags": {case_id: sorted(tags) for case_id, tags in JIRA_LOCAL_TAGS.items()},
+        "monitor_baselined": JIRA_MONITOR_BASELINED,
+        "monitor_baseline_at": JIRA_MONITOR_BASELINE_AT.isoformat() if JIRA_MONITOR_BASELINE_AT else None,
+        "auto_triage_baseline_at": JIRA_AUTO_TRIAGE_BASELINE_AT.isoformat() if JIRA_AUTO_TRIAGE_BASELINE_AT else None,
+        "auto_triage_was_enabled": JIRA_AUTO_TRIAGE_WAS_ENABLED,
+    }
+
+
+def _save_monitor_checkpoint() -> None:
+    if STATE_STORE is not None:
+        STATE_STORE.save_monitor_state(_monitor_checkpoint())
+
+
+def _restore_monitor_checkpoint(state: dict[str, object]) -> None:
+    global JIRA_MONITOR_BASELINED, JIRA_MONITOR_BASELINE_AT
+    global JIRA_AUTO_TRIAGE_BASELINE_AT, JIRA_AUTO_TRIAGE_WAS_ENABLED
+    seen = state.get("seen_keys")
+    if isinstance(seen, list):
+        JIRA_SEEN_KEYS.update(value for value in seen if isinstance(value, str))
+    attempts = state.get("pending_attempts")
+    if isinstance(attempts, dict):
+        for case_id, count in attempts.items():
+            if isinstance(case_id, str) and isinstance(count, int) and 0 <= count <= 3:
+                JIRA_PENDING_TRIAGE_ATTEMPTS[case_id] = count
+    tags = state.get("local_tags")
+    if isinstance(tags, dict):
+        for case_id, values in tags.items():
+            if isinstance(case_id, str) and isinstance(values, list):
+                JIRA_LOCAL_TAGS[case_id] = {
+                    tag for tag in values if isinstance(tag, str) and tag.startswith("studio-triage-")
+                }
+    for case_id, case in CASES.items():
+        JIRA_LOCAL_TAGS.setdefault(
+            case_id, {tag for tag in case.tags if tag.startswith("studio-triage-")}
+        )
+    JIRA_MONITOR_BASELINED = state.get("monitor_baselined") is True
+    for name, global_name in (
+        ("monitor_baseline_at", "monitor"),
+        ("auto_triage_baseline_at", "auto"),
+    ):
+        raw = state.get(name)
+        try:
+            value = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            value = None
+        if global_name == "monitor":
+            JIRA_MONITOR_BASELINE_AT = value
+        else:
+            JIRA_AUTO_TRIAGE_BASELINE_AT = value
+    JIRA_AUTO_TRIAGE_WAS_ENABLED = state.get("auto_triage_was_enabled") is True
 
 
 def _private_local_mode_enabled() -> bool:
@@ -320,6 +432,7 @@ async def _poll_jira_once() -> None:
             page_cap_reached=page_cap_reached,
             auto_triage_enabled=auto_triage,
         )
+        _save_monitor_checkpoint()
 
     if not auto_triage or not pending_cases:
         return
@@ -336,6 +449,7 @@ async def _poll_jira_once() -> None:
         )
         for case in pending_cases:
             _tag_local_case(case.id, "studio-triage-paused-knowledge", True)
+        _save_monitor_checkpoint()
         return
     if (
         provider.requires_external_ticket_consent
@@ -346,6 +460,16 @@ async def _poll_jira_once() -> None:
         )
         for case in pending_cases:
             _tag_local_case(case.id, "studio-triage-paused-consent", True)
+        _save_monitor_checkpoint()
+        return
+    if provider.requires_external_ticket_consent and not provider.live:
+        JIRA_MONITOR_STATE["last_error"] = (
+            "Auto-triage paused: selected external model credentials are not configured "
+            "for the current provider destination."
+        )
+        for case in pending_cases:
+            _tag_local_case(case.id, "studio-triage-paused-model-setup", True)
+        _save_monitor_checkpoint()
         return
 
     ordered_pending_cases = sorted(
@@ -361,7 +485,23 @@ async def _poll_jira_once() -> None:
             if any(run.case_id == case.id for run in RUNS.values()):
                 JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
                 _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                _save_monitor_checkpoint()
                 continue
+            attempts = JIRA_PENDING_TRIAGE_ATTEMPTS.get(case.id, 0)
+            if attempts >= 3:
+                JIRA_MONITOR_STATE["last_error"] = (
+                    "Auto-triage stopped after three interrupted or failed attempts."
+                )
+                JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+                _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                _tag_local_case(case.id, "studio-triage-failed", True)
+                _save_monitor_checkpoint()
+                continue
+            # Reserve the attempt before any provider work. A process restart during
+            # generation therefore cannot silently grant an unbounded retry.
+            attempts += 1
+            JIRA_PENDING_TRIAGE_ATTEMPTS[case.id] = attempts
+            _save_monitor_checkpoint()
             try:
                 details = await adapter.get_request_details(case.external_key or case.id)
                 if str(details.get("status_category", "")).upper() == "DONE":
@@ -381,6 +521,7 @@ async def _poll_jira_once() -> None:
                         "studio-triage-retry-pending",
                     ):
                         _tag_local_case(case.id, tag, False)
+                    _save_monitor_checkpoint()
                     continue
                 case = case.model_copy(
                     update={
@@ -391,14 +532,17 @@ async def _poll_jira_once() -> None:
                 )
                 CASES[case.id] = case
                 _save_case(case)
-                result = await run_workflow(case, provider)
+                result = await run_workflow(
+                    case,
+                    provider,
+                    source_snapshot_hash=_source_snapshot_hash(details, case),
+                )
             except (
                 ITSMConfigurationError,
                 ITSMRequestError,
                 ProviderError,
                 RuntimeError,
             ) as exc:
-                attempts = JIRA_PENDING_TRIAGE_ATTEMPTS.get(case.id, 0) + 1
                 JIRA_MONITOR_STATE["last_error"] = (
                     f"Auto-triage attempt {attempts}/3 failed ({type(exc).__name__})."
                 )
@@ -410,6 +554,7 @@ async def _poll_jira_once() -> None:
                     JIRA_PENDING_TRIAGE_ATTEMPTS[case.id] = attempts
                     _tag_local_case(case.id, "studio-triage-failed", False)
                     _tag_local_case(case.id, "studio-triage-retry-pending", True)
+                _save_monitor_checkpoint()
                 continue
             RUNS[result.id] = result
             _save_run(result)
@@ -421,12 +566,14 @@ async def _poll_jira_once() -> None:
                 "studio-triage-retry-pending",
             ):
                 _tag_local_case(case.id, tag, False)
+            _save_monitor_checkpoint()
             JIRA_MONITOR_STATE["auto_triaged_count"] = (
                 int(JIRA_MONITOR_STATE["auto_triaged_count"]) + 1
             )
     JIRA_MONITOR_STATE["retry_pending_count"] = len(
         JIRA_PENDING_TRIAGE_ATTEMPTS
     )
+    _save_monitor_checkpoint()
 
 
 async def _jira_monitor_loop() -> None:
@@ -448,6 +595,7 @@ async def lifespan(_: FastAPI):
     STATE_STORE = configured_store()
     CASES.update(STATE_STORE.load_cases())
     RUNS.update(STATE_STORE.load_runs())
+    _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
     monitor = asyncio.create_task(_jira_monitor_loop())
     try:
         yield
@@ -461,6 +609,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Support Workflow Studio", version="0.1.0", lifespan=lifespan)
+app.include_router(workflow_definitions_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -565,6 +714,28 @@ async def health() -> dict[str, str | bool]:
 async def get_setup() -> dict[str, object]:
     """Return editable setup state without ever returning the stored API token."""
     jira = JiraConfig.from_env()
+    model = ProviderConfig.from_env()
+    confluence_base_url = os.getenv("CONFLUENCE_BASE_URL", "")
+    confluence_email = os.getenv("CONFLUENCE_USER_EMAIL", "")
+    confluence_spaces = os.getenv("CONFLUENCE_SPACE_KEYS", "")
+    confluence_token = os.getenv("CONFLUENCE_API_TOKEN", "").strip()
+    confluence_token_configured = False
+    try:
+        confluence_setup = ConfluenceConfig(
+            base_url=confluence_base_url,
+            email=confluence_email,
+            api_token=confluence_token or "configured-placeholder",
+            space_keys=tuple(value.strip() for value in confluence_spaces.split(",") if value.strip()),
+        )
+        confluence_setup.validate()
+        confluence_scope = confluence_setup.credential_scope
+        confluence_consent_scope = confluence_setup.consent_scope
+        confluence_token_configured = bool(confluence_token) and (
+            os.getenv("CONFLUENCE_API_TOKEN_SCOPE", "").strip() == confluence_scope
+        )
+    except ConfluenceConfigurationError:
+        confluence_scope = ""
+        confluence_consent_scope = ""
     return {
         "jira_base_url": jira.base_url,
         "jira_email": jira.email,
@@ -572,14 +743,160 @@ async def get_setup() -> dict[str, object]:
         "jira_queue_id": jira.queue_id,
         "jira_token_configured": bool(jira.api_token),
         "knowledge_dir": os.getenv("KNOWLEDGE_DIR", ""),
+        "knowledge_provider": os.getenv("KNOWLEDGE_PROVIDER", "local"),
+        "confluence_base_url": confluence_base_url,
+        "confluence_email": confluence_email,
+        "confluence_space_keys": confluence_spaces,
+        "confluence_api_token_configured": confluence_token_configured,
+        "confluence_ticket_search_allowed": (
+            _enabled_env("CONFLUENCE_TICKET_SEARCH_ALLOWED")
+            and bool(confluence_consent_scope)
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip() == confluence_consent_scope
+        ),
         "auto_triage_new_tickets": _enabled_env("JSM_AUTO_TRIAGE_NEW_TICKETS"),
         "poll_interval_seconds": _monitor_interval_seconds(),
         "max_auto_triage_per_poll": _auto_triage_limit(),
         "n1_keywords": os.getenv("SUPPORT_N1_KEYWORDS", ""),
         "n3_plus_keywords": os.getenv("SUPPORT_N3_PLUS_KEYWORDS", ""),
         "n3_keywords": os.getenv("SUPPORT_N3_KEYWORDS", ""),
+        "model_provider": model.provider,
+        "model_name": model.model,
+        "model_base_url": model.base_url,
+        "model_api_key_configured": bool(model.api_key),
+        "external_model_disclosure_accepted": model.external_ticket_inference_allowed,
         "private_local_mode": _private_local_mode_enabled(),
     }
+
+
+def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str, bool]:
+    """Validate local model settings without sending a prompt or probing a provider."""
+    current = ProviderConfig.from_env()
+    provider = (settings.model_provider or current.provider).strip().lower()
+    model_name = (settings.model_name if settings.model_name is not None else current.model).strip()
+    base_url = (
+        settings.model_base_url
+        if settings.model_base_url is not None
+        else current.base_url
+    ).strip().rstrip("/")
+    api_key = settings.model_api_key.strip()
+    target_scope = model_destination_scope(provider, base_url)
+    current_scope = model_destination_scope(current.provider, current.base_url)
+    saved_key = os.getenv("MODEL_API_KEY", "").strip()
+    saved_key_scope = os.getenv("MODEL_API_KEY_SCOPE", "").strip()
+    saved_consent_scope = os.getenv("MODEL_CONSENT_SCOPE", "").strip()
+    previously_consented_here = (
+        current.external_ticket_inference_allowed
+        and saved_consent_scope == target_scope
+    )
+    consent = (
+        settings.external_model_disclosure_accepted
+        if settings.external_model_disclosure_accepted is not None
+        else previously_consented_here
+    )
+    model_fields_submitted = any(
+        value is not None
+        for value in (
+            settings.model_provider,
+            settings.model_name,
+            settings.model_base_url,
+            settings.external_model_disclosure_accepted,
+        )
+    )
+    if not model_fields_submitted and not api_key and not settings.clear_model_api_key:
+        return {}, "", False
+
+    supported = {"demo", "openai-compatible", "anthropic", "ollama-local"}
+    if provider not in supported:
+        raise HTTPException(status_code=422, detail="Choose demo, OpenAI-compatible, Anthropic, or local Ollama.")
+    if provider != "demo" and not model_name:
+        raise HTTPException(status_code=422, detail="A model name is required for the selected provider.")
+    if settings.clear_model_api_key and api_key:
+        raise HTTPException(status_code=422, detail="Choose either a replacement model key or remove the saved key.")
+
+    if settings.clear_model_api_key:
+        effective_key = ""
+    elif api_key:
+        effective_key = api_key
+    elif saved_key and target_scope == saved_key_scope:
+        effective_key = saved_key
+    elif not saved_key and target_scope == current_scope and current.api_key:
+        # Supports an operator-provided GROQ_API_KEY at its matching endpoint only.
+        effective_key = current.api_key
+    else:
+        effective_key = ""
+    if provider in {"openai-compatible", "anthropic"}:
+        if not effective_key:
+            raise HTTPException(status_code=422, detail="Enter a model API key before selecting this provider.")
+        if not consent:
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm that the selected external model provider will receive ticket content before saving.",
+            )
+    if _private_local_mode_enabled() and provider != "ollama-local":
+        raise HTTPException(status_code=403, detail="Private local mode only allows local Ollama models.")
+
+    if provider == "openai-compatible":
+        parsed = urlsplit(base_url)
+        host = (parsed.hostname or "").casefold()
+        try:
+            try:
+                address = ipaddress.ip_address(host) if host else None
+            except ValueError:
+                address = None
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Model endpoint URL is invalid.") from exc
+        loopback = (address is not None and address.is_loopback) or host == "localhost"
+        if (
+            not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+            or (parsed.scheme == "https" and port not in (None, 443))
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Model endpoint must use HTTPS, or HTTP on a local loopback host, without credentials, query, or fragment.",
+            )
+    elif provider == "ollama-local":
+        parsed = urlsplit(base_url)
+        host = (parsed.hostname or "").casefold()
+        try:
+            try:
+                address = ipaddress.ip_address(host) if host else None
+            except ValueError:
+                address = None
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Local Ollama endpoint URL is invalid.") from exc
+        loopback = (address is not None and address.is_loopback) or host == "localhost"
+        if (
+            parsed.scheme != "http"
+            or not loopback
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+            or port not in (None, 80, 11434)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Local Ollama must use an HTTP loopback URL on port 80 or 11434 without a path or credentials.",
+            )
+
+    values = {
+        "MODEL_PROVIDER": provider,
+        "MODEL_NAME": model_name or "Synthetic workflow model",
+        "MODEL_BASE_URL": base_url,
+        "ALLOW_EXTERNAL_TICKET_INFERENCE": str(bool(consent)).lower(),
+        "MODEL_CONSENT_SCOPE": target_scope,
+    }
+    if api_key or (saved_key and target_scope == saved_key_scope and not settings.clear_model_api_key):
+        values["MODEL_API_KEY_SCOPE"] = target_scope
+    return values, api_key, settings.clear_model_api_key
 
 
 def _jira_discovery_config(settings: JiraDiscoveryRequest) -> JiraConfig:
@@ -609,6 +926,63 @@ def _jira_discovery_config(settings: JiraDiscoveryRequest) -> JiraConfig:
     return config
 
 
+def _confluence_setup_config(
+    base_url: str, email: str, api_token: str, space_keys: str
+) -> ConfluenceConfig:
+    spaces = tuple(value.strip().upper() for value in space_keys.split(",") if value.strip())
+    candidate = ConfluenceConfig(
+        base_url=base_url.strip().rstrip("/"),
+        email=email.strip(),
+        api_token=api_token.strip() or "configured-placeholder",
+        space_keys=spaces,
+    )
+    candidate.validate()
+    if not api_token.strip():
+        saved_token = os.getenv("CONFLUENCE_API_TOKEN", "").strip()
+        saved_scope = os.getenv("CONFLUENCE_API_TOKEN_SCOPE", "").strip()
+        if not saved_token or saved_scope != candidate.credential_scope:
+            raise HTTPException(
+                status_code=422,
+                detail="Enter a Confluence API token for this site, account, and space selection.",
+            )
+        candidate = ConfluenceConfig(
+            base_url=candidate.base_url,
+            email=candidate.email,
+            api_token=saved_token,
+            space_keys=candidate.space_keys,
+        )
+    return candidate
+
+
+@app.post("/api/setup/confluence/check")
+async def check_confluence_connection(settings: ConfluenceCheckRequest) -> dict[str, object]:
+    """Check Confluence reachability only after the operator clicks the check button."""
+    if _private_local_mode_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Confluence connections are disabled while PRIVATE_LOCAL_MODE is active.",
+        )
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for value in (settings.confluence_base_url, settings.confluence_email,
+                      settings.confluence_api_token, settings.confluence_space_keys)
+        for character in value
+    ):
+        raise HTTPException(status_code=422, detail="Confluence setup fields contain unsupported control characters.")
+    try:
+        config = _confluence_setup_config(
+            settings.confluence_base_url,
+            settings.confluence_email,
+            settings.confluence_api_token,
+            settings.confluence_space_keys,
+        )
+        return await ConfluenceAdapter(config).check_connection()
+    except ConfluenceConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ConfluenceRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.post("/api/setup/jira/workspaces")
 async def discover_jira_workspaces(settings: JiraDiscoveryRequest) -> list[dict[str, str]]:
     """Discover accessible service desks without persisting submitted credentials."""
@@ -636,6 +1010,10 @@ async def discover_jira_queues(settings: JiraDiscoveryRequest) -> list[dict[str,
 @app.put("/api/setup")
 async def save_setup(settings: SetupRequest) -> dict[str, object]:
     """Verify an optional Jira connection, then save local operator settings."""
+    model_env_values, model_api_key, remove_model_api_key = _validated_model_setup(settings)
+    knowledge_provider = settings.knowledge_provider.strip().lower()
+    if knowledge_provider not in {"local", "confluence"}:
+        raise HTTPException(status_code=422, detail="Choose local files or Confluence Cloud as the knowledge source.")
     connection_values = (
         settings.jira_base_url,
         settings.jira_email,
@@ -643,6 +1021,14 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         settings.jira_service_desk_id,
         settings.jira_queue_id,
         settings.knowledge_dir,
+        settings.confluence_base_url,
+        settings.confluence_email,
+        settings.confluence_api_token,
+        settings.confluence_space_keys,
+        settings.model_provider or "",
+        settings.model_name or "",
+        settings.model_base_url or "",
+        settings.model_api_key,
     )
     if any(
         ord(character) < 32 or ord(character) == 127
@@ -654,8 +1040,11 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         for character in value
     ):
         raise HTTPException(status_code=422, detail="Setup fields contain unsupported control characters.")
-    if _private_local_mode_enabled() and any((settings.jira_base_url, settings.jira_email, settings.jira_api_token)):
-        raise HTTPException(status_code=403, detail="Jira setup is disabled while PRIVATE_LOCAL_MODE is active.")
+    if _private_local_mode_enabled() and (
+        any((settings.jira_base_url, settings.jira_email, settings.jira_api_token))
+        or knowledge_provider == "confluence"
+    ):
+        raise HTTPException(status_code=403, detail="External connections are disabled while PRIVATE_LOCAL_MODE is active.")
 
     url = settings.jira_base_url.strip().rstrip("/")
     email = settings.jira_email.strip()
@@ -675,8 +1064,8 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         except ITSMRequestError as exc:
             raise HTTPException(status_code=502, detail=f"Jira connection check failed: {exc}") from exc
 
-    knowledge_dir = settings.knowledge_dir.strip()
-    if knowledge_dir:
+    knowledge_dir = settings.knowledge_dir.strip() if knowledge_provider == "local" else ""
+    if knowledge_provider == "local" and knowledge_dir:
         candidate_path = Path(knowledge_dir).expanduser()
         if not candidate_path.is_dir():
             raise HTTPException(status_code=422, detail="Knowledge directory does not exist on this machine.")
@@ -692,12 +1081,45 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         if not knowledge_check.get("available"):
             raise HTTPException(status_code=422, detail=str(knowledge_check.get("message") or "Knowledge source allowlist could not be verified."))
 
+    confluence_config: ConfluenceConfig | None = None
+    confluence_token = ""
+    confluence_consent = False
+    if knowledge_provider == "confluence":
+        try:
+            confluence_config = _confluence_setup_config(
+                settings.confluence_base_url,
+                settings.confluence_email,
+                settings.confluence_api_token,
+                settings.confluence_space_keys,
+            )
+        except ConfluenceConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        new_scope = confluence_config.consent_scope
+        prior_consent = (
+            _enabled_env("CONFLUENCE_TICKET_SEARCH_ALLOWED")
+            and os.getenv("CONFLUENCE_SEARCH_CONSENT_SCOPE", "").strip() == new_scope
+        )
+        confluence_consent = settings.confluence_ticket_search_allowed or prior_consent
+        if not confluence_consent:
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm that minimized ticket search terms will be sent to the selected Confluence site and spaces before saving.",
+            )
+        confluence_token = settings.confluence_api_token.strip()
+
     env_values = {
         "JSM_BASE_URL": url,
         "JSM_USER_EMAIL": email,
         "JSM_SERVICE_DESK_ID": desk,
         "JSM_QUEUE_ID": queue,
         "KNOWLEDGE_DIR": str(Path(knowledge_dir).expanduser().resolve()) if knowledge_dir else "",
+        "KNOWLEDGE_PROVIDER": knowledge_provider,
+        "CONFLUENCE_BASE_URL": confluence_config.normalized_base_url if confluence_config else "",
+        "CONFLUENCE_USER_EMAIL": confluence_config.email if confluence_config else "",
+        "CONFLUENCE_SPACE_KEYS": ",".join(confluence_config.normalized_space_keys) if confluence_config else "",
+        "CONFLUENCE_API_TOKEN_SCOPE": confluence_config.credential_scope if confluence_config else "",
+        "CONFLUENCE_TICKET_SEARCH_ALLOWED": str(confluence_consent).lower(),
+        "CONFLUENCE_SEARCH_CONSENT_SCOPE": confluence_config.consent_scope if confluence_config and confluence_consent else "",
         "JSM_AUTO_TRIAGE_NEW_TICKETS": str(settings.auto_triage_new_tickets).lower(),
         "JSM_POLL_INTERVAL_SECONDS": str(settings.poll_interval_seconds),
         "JSM_AUTO_TRIAGE_MAX_PER_POLL": str(settings.max_auto_triage_per_poll),
@@ -705,12 +1127,17 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "SUPPORT_N3_PLUS_KEYWORDS": settings.n3_plus_keywords.strip(),
         "SUPPORT_N3_KEYWORDS": settings.n3_keywords.strip(),
     }
+    env_values.update(model_env_values)
     try:
         async with SETUP_WRITE_LOCK:
             _persist_local_setup(
                 env_values,
                 settings.jira_api_token.strip(),
                 remove_api_token=not any(jira_fields),
+                model_api_key=model_api_key,
+                remove_model_api_key=remove_model_api_key,
+                confluence_api_token=confluence_token,
+                remove_confluence_api_token=knowledge_provider != "confluence",
             )
     except (OSError, UnicodeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="Local setup could not be saved. Check that the project folder is writable.") from exc
@@ -720,7 +1147,14 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "jira_connected": bool(any(jira_fields) and token),
         "jira_queue_sample_count": queue_sample_count,
         "knowledge": knowledge_status(),
-        "message": "Settings saved on this machine. The API token is never returned to the browser.",
+        "confluence_connection": "configured_not_checked" if knowledge_provider == "confluence" else "not_selected",
+        "model_provider": model_env_values.get("MODEL_PROVIDER", ProviderConfig.from_env().provider),
+        "model_name": model_env_values.get("MODEL_NAME", ProviderConfig.from_env().model),
+        "external_model_disclosure_accepted": model_env_values.get(
+            "ALLOW_EXTERNAL_TICKET_INFERENCE",
+            str(ProviderConfig.from_env().external_ticket_inference_allowed).lower(),
+        ) == "true",
+        "message": "Settings saved on this machine. Setup does not send a model request, and saved API keys are never returned to the browser.",
     }
 
 
@@ -896,31 +1330,43 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
     if case.source == "jira-service-management":
         knowledge = knowledge_status()
         if (
-            knowledge["mode"] != "local"
+            knowledge["mode"] not in {"local", "confluence"}
             or not knowledge["configured"]
             or not knowledge["available"]
         ):
             raise HTTPException(
                 status_code=409,
-                detail="Jira triage requires an operator-provided local knowledge directory. Configure KNOWLEDGE_DIR with approved .md or .txt guidance before processing tickets.",
+                detail="Jira triage requires an available local or approved Confluence knowledge source. Configure and authorize a knowledge source before processing tickets.",
             )
     config = ProviderConfig.from_env()
     if (
-        case.source == "jira-service-management"
-        and config.live
-        and config.requires_external_ticket_consent
+        config.requires_external_ticket_consent
         and not config.external_ticket_inference_allowed
     ):
         raise HTTPException(
             status_code=403,
-            detail="External ticket inference is off. Review provider terms and set ALLOW_EXTERNAL_TICKET_INFERENCE=true locally before sending ticket text to a model.",
+            detail="External ticket inference is off. Review provider terms and confirm the selected provider and endpoint in Setup before sending ticket text to a model.",
         )
+    if (
+        config.requires_external_ticket_consent
+        and not config.live
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before processing Jira tickets.",
+        )
+    source_snapshot_hash: str | None = None
     if case.source == "jira-service-management":
         try:
             details = await create_itsm_adapter("jira-service-management").get_request_details(case.external_key or case.id)
             case = case.model_copy(
-                update={"title": details["summary"], "body": details["description"]}
+                update={
+                    "title": details["summary"],
+                    "body": details["description"],
+                    "status": str(details.get("status") or case.status),
+                }
             )
+            source_snapshot_hash = _source_snapshot_hash(details, case)
             CASES[case.id] = case
             _save_case(case)
         except ITSMConfigurationError as exc:
@@ -933,13 +1379,26 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             config,
             request.candidate_count,
             request.include_model_council,
+            source_snapshot_hash=source_snapshot_hash,
         )
+    except KnowledgeConfigurationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except KnowledgeRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     RUNS[result.id] = result
-    _save_run(result)
+    _save_run(
+        result,
+        audit_event=(
+            result.id,
+            result.case_id,
+            "workflow.started",
+            {"to_status": result.status, "score": result.score},
+        ),
+    )
     if case.source == "jira-service-management":
         for tag in (
             "studio-triage-paused-knowledge",
@@ -998,41 +1457,135 @@ async def _publish_ticket_reply_locked(run_id: str) -> dict[str, object]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMRequestError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if (
-        latest_details["summary"] != case.title
-        or latest_details["description"] != case.body
-        or not result.source_snapshot_hash
-        or content_fingerprint(
-            latest_details["summary"], latest_details["description"]
-        )
-        != result.source_snapshot_hash
-    ):
+    if not _matches_reviewed_ticket(result, case, latest_details):
         raise HTTPException(
             status_code=409,
             detail="The Jira request changed after this workflow reviewed it. Sync and rerun triage, then approve the new draft before publishing.",
         )
     # An interrupted request is ambiguous. Keep this run closed to retries.
     result.ticket_comment_outcome = "unknown"
-    _save_run(result)
+    _save_run(
+        result,
+        audit_event=(
+            result.id,
+            result.case_id,
+            "publish.attempted",
+            {
+                "from_status": result.status,
+                "to_status": result.status,
+                "decision_version": result.approval_version,
+                "outcome": "unknown",
+            },
+        ),
+    )
     try:
         posted = await create_itsm_adapter("jira-service-management").publish_public_reply(case.external_key, result.draft)
     except ITSMConfigurationError as exc:
         result.ticket_comment_outcome = "failed"
-        _save_run(result)
+        _save_run(
+            result,
+            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
-        _save_run(result)
+        _save_run(
+            result,
+            audit_event=(result.id, result.case_id, "publish.unknown", {"outcome": "unknown"}),
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ITSMRequestError as exc:
         result.ticket_comment_outcome = "failed"
-        _save_run(result)
+        _save_run(
+            result,
+            audit_event=(result.id, result.case_id, "publish.failed", {"outcome": "failed"}),
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     result.ticket_comment_published = True
     result.ticket_comment_id = posted.get("id")
     result.ticket_comment_outcome = "published"
-    _save_run(result)
+    _save_run(
+        result,
+        audit_event=(result.id, result.case_id, "publish.succeeded", {"outcome": "published"}),
+    )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
+
+
+def _matches_reviewed_ticket(
+    result: WorkflowResult,
+    case: CaseRecord,
+    latest_details: dict[str, object],
+) -> bool:
+    summary = latest_details.get("summary")
+    description = latest_details.get("description")
+    status = latest_details.get("status")
+    refreshed_hash = latest_details.get("source_snapshot_hash")
+    if (
+        not isinstance(refreshed_hash, str)
+        or len(refreshed_hash) != 64
+        or any(character not in "0123456789abcdef" for character in refreshed_hash.lower())
+    ):
+        refreshed_hash = (
+            content_fingerprint(summary, description, status)
+            if isinstance(summary, str)
+            and isinstance(description, str)
+            and isinstance(status, str)
+            else None
+        )
+    return (
+        isinstance(summary, str)
+        and isinstance(description, str)
+        and isinstance(status, str)
+        and summary == case.title
+        and description == case.body
+        and status == case.status
+        and bool(result.source_snapshot_hash)
+        and refreshed_hash == result.source_snapshot_hash
+    )
+
+
+def _source_snapshot_hash(
+    details: dict[str, object], case: CaseRecord
+) -> str:
+    candidate = details.get("source_snapshot_hash")
+    if (
+        isinstance(candidate, str)
+        and len(candidate) == 64
+        and all(character in "0123456789abcdef" for character in candidate.lower())
+    ):
+        return candidate.lower()
+    return content_fingerprint(
+        str(details.get("summary", case.title)),
+        str(details.get("description", case.body)),
+        str(details.get("status", case.status)),
+    )
+
+
+async def _require_current_ticket_snapshot(
+    result: WorkflowResult,
+    case: CaseRecord,
+) -> None:
+    """Fail closed when Jira content is no longer the content reviewed by this run."""
+    if case.source != "jira-service-management":
+        return
+    if not case.external_key or not result.source_snapshot_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="This Jira run has no verified source snapshot. Sync and rerun triage before approval.",
+        )
+    try:
+        latest_details = await create_itsm_adapter(
+            "jira-service-management"
+        ).get_request_details(case.external_key)
+    except ITSMConfigurationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ITSMRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not _matches_reviewed_ticket(result, case, latest_details):
+        raise HTTPException(
+            status_code=409,
+            detail="The Jira request changed after this workflow reviewed it. Sync and rerun triage before approving or re-reviewing the draft.",
+        )
 
 
 @app.get("/api/workflows/latest/{case_id}", response_model=WorkflowResult)
@@ -1044,6 +1597,16 @@ async def latest_workflow(case_id: str) -> WorkflowResult:
     if result is None:
         raise HTTPException(status_code=404, detail="No workflow run for this case")
     return result
+
+
+@app.get("/api/workflows/{run_id}/events")
+async def workflow_run_events(run_id: str) -> list[dict[str, object]]:
+    """Read metadata-only local audit events; no ticket or draft text is returned."""
+    if run_id not in RUNS:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    if STATE_STORE is None:
+        return []
+    return STATE_STORE.list_run_events(run_id)
 
 
 @app.post("/api/workflows/{run_id}/decision", response_model=WorkflowResult)
@@ -1068,6 +1631,11 @@ async def _decide_locked(
             status_code=409,
             detail="The draft changed after this action was prepared. Review the latest draft and submit your decision again.",
         )
+    case = CASES.get(result.case_id)
+    if request.decision in {"approve", "edit"}:
+        if case is None:
+            raise HTTPException(status_code=404, detail="Workflow case not found")
+        await _require_current_ticket_snapshot(result, case)
     if request.decision == "approve" and (result.score < 9 or not result.draft.strip()):
         raise HTTPException(
             status_code=409,
@@ -1081,19 +1649,23 @@ async def _decide_locked(
                 status_code=409,
                 detail="The bounded revision limit is reached. Start a new workflow before further edits.",
             )
-        case = CASES.get(result.case_id)
-        if case is None:
-            raise HTTPException(status_code=404, detail="Workflow case not found")
+        assert case is not None
         config = ProviderConfig.from_env()
         if (
-            case.source == "jira-service-management"
-            and config.live
-            and config.requires_external_ticket_consent
+            config.requires_external_ticket_consent
             and not config.external_ticket_inference_allowed
         ):
             raise HTTPException(
                 status_code=403,
-                detail="External ticket inference is off. Re-enable it locally before asking models to review an edited Jira reply.",
+                detail="External ticket inference is off. Review provider terms and confirm the selected provider and endpoint in Setup before asking a model to review an edited reply.",
+            )
+        if (
+            config.requires_external_ticket_consent
+            and not config.live
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before reviewing an edited reply.",
             )
         try:
             score, verifier_findings, reviewer_findings = await review_edited_draft(
@@ -1181,7 +1753,25 @@ async def _decide_locked(
         if decision_stage is not None:
             decision_stage.status = "complete" if request.decision == "approve" else "warning"
             decision_stage.detail = f"{result.human_decision}. No external action was taken."
-    _save_run(result)
+    event_type = {
+        "approve": "decision.approved",
+        "reject": "decision.rejected",
+        "edit": "draft.edited",
+    }[request.decision]
+    _save_run(
+        result,
+        audit_event=(
+            result.id,
+            result.case_id,
+            event_type,
+            {
+                "from_status": "awaiting_human",
+                "to_status": result.status,
+                "decision_version": result.approval_version,
+                "score": result.score,
+            },
+        ),
+    )
     return result
 
 
