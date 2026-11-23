@@ -69,7 +69,8 @@ class WorkflowStateStore(Protocol):
     """Persistence contract consumed by the local workflow runtime.
 
     Implementations must make each method's documented state transition
-    durable before returning. SQLite is the only implementation today.
+    durable before returning. LocalStore is the default; PostgresStore is an
+    opt-in customer-runner backend selected with SUPPORT_WORKFLOW_DATABASE_URL.
     """
 
     def check_ready(self) -> None: ...
@@ -706,4 +707,9 @@ def configured_store_path() -> Path:
 
 
 def configured_store() -> WorkflowStateStore:
+    postgres_url = os.getenv("SUPPORT_WORKFLOW_DATABASE_URL", "").strip()
+    if postgres_url:
+        from .postgres_store import PostgresStore
+
+        return PostgresStore(postgres_url)
     return LocalStore(configured_store_path())
