@@ -21,7 +21,6 @@ from .store import (
     RunEventInput,
 )
 
-
 _SCHEMA_MIGRATION_LOCK_KEY = 0x53575352554E4E52
 
 
