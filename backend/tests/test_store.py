@@ -385,6 +385,93 @@ def test_save_run_rolls_back_run_when_optional_event_insert_fails(tmp_path, monk
 
     assert run.id not in store.load_runs()
     assert store.list_run_events(run.id) == []
+    assert store.run_event_outbox_counts() == {"pending": 0, "leased": 0, "delivered": 0}
+
+
+def test_run_event_outbox_is_transactional_and_owner_fenced(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    run = _minimal_run()
+    store.save_run(
+        run,
+        audit_event=(run.id, run.case_id, "workflow.started", {"to_status": "awaiting_human"}),
+    )
+    now = datetime.now(UTC) + timedelta(seconds=1)
+
+    events = store.claim_run_event_outbox(lease_owner="dispatcher-a", now=now)
+    assert len(events) == 1
+    event = events[0]
+    event_id = event["event_id"]
+    assert event["event_type"] == "workflow.started"
+    assert event["attempts"] == 1
+    assert "draft" not in event
+    assert store.run_event_outbox_counts() == {"pending": 0, "leased": 1, "delivered": 0}
+    assert not store.acknowledge_run_event_outbox(event_id, "0" * 32, now + timedelta(seconds=1))
+    assert store.acknowledge_run_event_outbox(
+        event_id, event["lease_token"], now + timedelta(seconds=1)
+    )
+    assert not store.acknowledge_run_event_outbox(
+        event_id, event["lease_token"], now + timedelta(seconds=2)
+    )
+    assert store.run_event_outbox_counts() == {"pending": 0, "leased": 0, "delivered": 1}
+
+
+def test_run_event_outbox_reclaims_expired_lease_and_releases_for_retry(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    run = _minimal_run()
+    event = store.append_run_event(run.id, run.case_id, "decision.approved", {"to_status": "approved"})
+    event_id = event["event_id"]
+    now = datetime.now(UTC) + timedelta(seconds=1)
+
+    first = store.claim_run_event_outbox(
+        lease_owner="worker-old", now=now, lease_seconds=1
+    )[0]
+    assert first["attempts"] == 1
+    reclaimed = store.claim_run_event_outbox(
+        lease_owner="worker-old", now=now + timedelta(seconds=2)
+    )[0]
+    assert reclaimed["attempts"] == 2
+    assert first["lease_token"] != reclaimed["lease_token"]
+    assert not store.acknowledge_run_event_outbox(
+        event_id, first["lease_token"], now + timedelta(seconds=2)
+    )
+    retry_at = now + timedelta(seconds=8)
+    assert store.release_run_event_outbox(
+        event_id,
+        reclaimed["lease_token"],
+        now=now + timedelta(seconds=3),
+        available_at=retry_at,
+        error_code="transport_unavailable",
+    )
+    assert store.claim_run_event_outbox(
+        lease_owner="worker-next", now=now + timedelta(seconds=7)
+    ) == []
+    retried = store.claim_run_event_outbox(
+        lease_owner="worker-next", now=retry_at
+    )[0]
+    assert retried["attempts"] == 3
+
+
+def test_run_event_outbox_rejects_sensitive_error_codes_and_expired_release(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    event = store.append_run_event(uuid4().hex, "SUP-4821", "workflow.started", {})
+    event_id = event["event_id"]
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    first_claim = store.claim_run_event_outbox(
+        lease_owner="worker-a", now=now, lease_seconds=1
+    )[0]
+
+    with pytest.raises(ValueError, match="non-sensitive"):
+        store.release_run_event_outbox(
+            event_id, first_claim["lease_token"], now=now,
+            available_at=now + timedelta(seconds=2), error_code="ticket body: secret",
+        )
+    assert not store.release_run_event_outbox(
+        event_id,
+        first_claim["lease_token"],
+        now=now + timedelta(seconds=2),
+        available_at=now + timedelta(seconds=3),
+        error_code="timeout",
+    )
 
 
 def test_local_store_readiness_probe_checks_database_connection(tmp_path, monkeypatch) -> None:

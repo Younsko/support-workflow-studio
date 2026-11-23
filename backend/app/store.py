@@ -126,6 +126,28 @@ class LocalStore:
                 "ON run_events(run_id, sequence)"
             )
             connection.execute(
+                """CREATE TABLE IF NOT EXISTS run_event_outbox (
+                    event_id TEXT PRIMARY KEY,
+                    state TEXT NOT NULL CHECK(state IN ('pending', 'leased', 'delivered')),
+                    attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+                    available_at TEXT NOT NULL,
+                    lease_owner TEXT,
+                    lease_token TEXT,
+                    lease_until TEXT,
+                    delivered_at TEXT,
+                    last_error_code TEXT
+                )"""
+            )
+            outbox_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(run_event_outbox)")
+            }
+            if "lease_token" not in outbox_columns:
+                connection.execute("ALTER TABLE run_event_outbox ADD COLUMN lease_token TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS run_event_outbox_pending "
+                "ON run_event_outbox(state, available_at, lease_until)"
+            )
+            connection.execute(
                 "CREATE TABLE IF NOT EXISTS monitor_state (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
             connection.commit()
@@ -397,6 +419,11 @@ class LocalStore:
         sequence = connection.execute(
             "SELECT sequence FROM run_events WHERE event_id = ?", (event_id,)
         ).fetchone()[0]
+        connection.execute(
+            "INSERT INTO run_event_outbox(event_id, state, attempts, available_at) "
+            "VALUES (?, 'pending', 0, ?)",
+            (event_id, occurred_at),
+        )
         return RunAuditEvent(
             sequence=sequence,
             event_id=event_id,
@@ -406,6 +433,136 @@ class LocalStore:
             occurred_at=occurred_at,
             **metadata.model_dump(),
         )
+
+    def claim_run_event_outbox(
+        self,
+        *,
+        lease_owner: str,
+        now: datetime,
+        limit: int = 50,
+        lease_seconds: int = 60,
+    ) -> list[dict[str, object]]:
+        """Lease metadata-only audit events for an external dispatcher.
+
+        Claiming is atomic on this single SQLite host. This is a local outbox
+        seam, not a distributed Postgres queue or a hosted delivery service.
+        """
+        if not isinstance(lease_owner, str) or not _SAFE_RUN_ID.fullmatch(lease_owner):
+            raise ValueError("lease_owner must be a short stable identifier.")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500.")
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600.")
+        now_value = now.astimezone(UTC).isoformat()
+        lease_until = (now.astimezone(UTC) + timedelta(seconds=lease_seconds)).isoformat()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """SELECT event_id FROM run_event_outbox
+                   WHERE available_at <= ?
+                     AND (state = 'pending' OR (state = 'leased' AND lease_until <= ?))
+                   ORDER BY available_at, event_id LIMIT ?""",
+                (now_value, now_value, limit),
+            ).fetchall()
+            event_ids = [row[0] for row in rows]
+            if not event_ids:
+                connection.commit()
+                return []
+            placeholders = ",".join("?" for _ in event_ids)
+            lease_tokens = {event_id: uuid4().hex for event_id in event_ids}
+            connection.execute(
+                f"""UPDATE run_event_outbox
+                    SET state='leased', lease_owner=?, lease_until=?, attempts=attempts + 1
+                    WHERE event_id IN ({placeholders})""",
+                (lease_owner, lease_until, *event_ids),
+            )
+            for event_id, lease_token in lease_tokens.items():
+                connection.execute(
+                    "UPDATE run_event_outbox SET lease_token=? WHERE event_id=?",
+                    (lease_token, event_id),
+                )
+            event_rows = connection.execute(
+                f"""SELECT e.sequence, e.event_id, e.run_id, e.case_id, e.event_type,
+                          e.occurred_at, e.from_status, e.to_status, e.decision_version,
+                          e.score, e.outcome, o.attempts
+                   FROM run_events e JOIN run_event_outbox o USING(event_id)
+                   WHERE e.event_id IN ({placeholders}) ORDER BY e.sequence""",
+                event_ids,
+            ).fetchall()
+            result: list[dict[str, object]] = []
+            for row in event_rows:
+                value = RunAuditEvent.model_validate(
+                    {key: row[key] for key in RunAuditEvent.model_fields}
+                ).model_dump(
+                    mode="json", exclude_none=True
+                )
+                value["attempts"] = row["attempts"]
+                value["lease_token"] = lease_tokens[row["event_id"]]
+                result.append(value)
+            connection.commit()
+            return result
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def acknowledge_run_event_outbox(self, event_id: str, lease_token: str, now: datetime) -> bool:
+        """Mark a leased event delivered using the token for that exact claim."""
+        if not isinstance(event_id, str) or not re.fullmatch(r"[a-f0-9]{32}", event_id):
+            raise ValueError("event_id is invalid.")
+        if not isinstance(lease_token, str) or not re.fullmatch(r"[a-f0-9]{32}", lease_token):
+            raise ValueError("lease_token is invalid.")
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """UPDATE run_event_outbox
+                   SET state='delivered', delivered_at=?, lease_owner=NULL,
+                       lease_token=NULL, lease_until=NULL, last_error_code=NULL
+                   WHERE event_id=? AND state='leased' AND lease_token=? AND lease_until>?""",
+                (now.astimezone(UTC).isoformat(), event_id, lease_token,
+                 now.astimezone(UTC).isoformat()),
+            )
+            connection.commit()
+        return cursor.rowcount == 1
+
+    def release_run_event_outbox(
+        self,
+        event_id: str,
+        lease_token: str,
+        *,
+        now: datetime,
+        available_at: datetime,
+        error_code: str | None = None,
+    ) -> bool:
+        """Return an event to pending with a bounded, non-sensitive error code."""
+        if not isinstance(event_id, str) or not re.fullmatch(r"[a-f0-9]{32}", event_id):
+            raise ValueError("event_id is invalid.")
+        if not isinstance(lease_token, str) or not re.fullmatch(r"[a-f0-9]{32}", lease_token):
+            raise ValueError("lease_token is invalid.")
+        if error_code is not None and not re.fullmatch(r"[a-z0-9_.-]{1,64}", error_code):
+            raise ValueError("error_code must be a short non-sensitive code.")
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """UPDATE run_event_outbox
+                   SET state='pending', available_at=?, lease_owner=NULL, lease_until=NULL,
+                       lease_token=NULL, last_error_code=?
+                   WHERE event_id=? AND state='leased' AND lease_token=? AND lease_until>?""",
+                (available_at.astimezone(UTC).isoformat(), error_code, event_id, lease_token,
+                 now.astimezone(UTC).isoformat()),
+            )
+            connection.commit()
+        return cursor.rowcount == 1
+
+    def run_event_outbox_counts(self) -> dict[str, int]:
+        """Return bounded operational counts without exposing event contents."""
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT state, COUNT(*) AS count FROM run_event_outbox GROUP BY state"
+            ).fetchall()
+        counts = {"pending": 0, "leased": 0, "delivered": 0}
+        counts.update({row["state"]: int(row["count"]) for row in rows})
+        return counts
 
     def append_run_event(
         self,
