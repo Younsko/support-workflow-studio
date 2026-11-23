@@ -135,6 +135,11 @@ class LocalStore:
         connection.row_factory = sqlite3.Row
         return connection
 
+    def check_ready(self) -> None:
+        """Confirm the local state database can accept a lightweight read."""
+        with closing(self._connect()) as connection:
+            connection.execute("SELECT 1").fetchone()
+
     def load_cases(self) -> dict[str, CaseRecord]:
         with closing(self._connect()) as connection:
             rows = connection.execute("SELECT id, payload FROM cases ORDER BY rowid").fetchall()

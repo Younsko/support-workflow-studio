@@ -347,3 +347,17 @@ def test_save_run_rolls_back_run_when_optional_event_insert_fails(tmp_path, monk
 
     assert run.id not in store.load_runs()
     assert store.list_run_events(run.id) == []
+
+
+def test_local_store_readiness_probe_checks_database_connection(tmp_path, monkeypatch) -> None:
+    import sqlite3
+
+    store = LocalStore(tmp_path / "ready.sqlite3")
+    store.check_ready()
+
+    def unavailable():
+        raise sqlite3.OperationalError("storage unavailable")
+
+    monkeypatch.setattr(store, "_connect", unavailable)
+    with pytest.raises(sqlite3.OperationalError, match="storage unavailable"):
+        store.check_ready()

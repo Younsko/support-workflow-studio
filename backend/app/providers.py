@@ -16,7 +16,7 @@ def model_destination_scope(provider: str, base_url: str) -> str:
     destination = base_url.strip().rstrip("/")
     if provider == "anthropic":
         destination = "https://api.anthropic.com/v1/messages"
-    return hashlib.sha256(f"{provider}\0{destination}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{provider}\0{destination}".encode()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -235,7 +235,7 @@ def _rate_limit_delay(response: object, attempt: int) -> float:
     reset = str(headers.get("x-ratelimit-reset-tokens", "")).strip()
     retry_after = str(headers.get("retry-after", "")).strip()
     candidate = reset or retry_after
-    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(ms|s|m)?", candidate, re.I)
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(ms|s|m)?", candidate, re.IGNORECASE)
     if match:
         amount = float(match.group(1))
         unit = (match.group(2) or "s").lower()

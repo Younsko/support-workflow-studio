@@ -6,6 +6,7 @@ import ipaddress
 import json
 import os
 import shutil
+import sqlite3
 import tempfile
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -748,6 +749,25 @@ async def health() -> dict[str, str | bool]:
         "credentials_configured": config.live,
         "private_local_mode": _private_local_mode_enabled(),
     }
+
+
+@app.get("/health/live")
+async def liveness() -> dict[str, str]:
+    """Process liveness probe; it deliberately does not depend on connectors."""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+async def readiness() -> dict[str, str]:
+    """Readiness probe for local execution; never reports provider credentials."""
+    store = STATE_STORE
+    if store is None:
+        raise HTTPException(status_code=503, detail="Local state storage is not ready.")
+    try:
+        store.check_ready()
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Local state storage is not ready.") from exc
+    return {"status": "ready", "storage": "available"}
 
 
 @app.get("/api/setup")
