@@ -129,13 +129,13 @@ def test_postgres_run_claims_are_idempotent_and_fenced(store: PostgresStore) -> 
 
 
 def test_postgres_outbox_claim_is_multi_worker_safe_and_tokens_are_fenced(store: PostgresStore) -> None:
-    now = datetime.now(UTC)
     case = demo_cases()[0]
     run = _run("RUN-OUTBOX123", case.id)
     store.save_run(
         run,
         audit_event=(run.id, case.id, "workflow.started", {"to_status": "awaiting_human"}),
     )
+    now = datetime.now(UTC)
 
     def claim(owner: str) -> list[dict[str, object]]:
         return store.claim_run_event_outbox(
@@ -159,12 +159,12 @@ def test_postgres_outbox_claim_is_multi_worker_safe_and_tokens_are_fenced(store:
 
 
 def test_postgres_outbox_release_retries_without_persisting_sensitive_errors(store: PostgresStore) -> None:
-    now = datetime.now(UTC)
     run = _run("RUN-RELEASE123", demo_cases()[0].id)
     store.save_run(
         run,
         audit_event=(run.id, run.case_id, "workflow.started", {"to_status": "awaiting_human"}),
     )
+    now = datetime.now(UTC)
     event = store.claim_run_event_outbox(lease_owner="worker-a", now=now)[0]
 
     assert store.release_run_event_outbox(
