@@ -139,6 +139,56 @@ def test_legacy_unscoped_model_key_and_consent_fail_closed(monkeypatch) -> None:
     assert config.external_ticket_inference_allowed is False
 
 
+@pytest.mark.parametrize(
+    ("prefix", "profile_factory"),
+    [
+        ("COUNCIL", ProviderConfig.council_profile),
+        ("JUDGE", ProviderConfig.judge_profile),
+    ],
+)
+def test_secondary_model_profiles_require_scoped_credentials_and_consent(
+    monkeypatch, prefix, profile_factory
+) -> None:
+    provider = "openai-compatible"
+    endpoint = "https://models.example/v1"
+    scope = providers.model_destination_scope(provider, endpoint)
+    monkeypatch.setenv(f"{prefix}_PROVIDER", provider)
+    monkeypatch.setenv(f"{prefix}_MODEL", "synthetic-review-model")
+    monkeypatch.setenv(f"{prefix}_API_KEY", "synthetic-profile-key")
+    monkeypatch.setenv(f"{prefix}_BASE_URL", endpoint)
+
+    assert profile_factory() is None
+
+    monkeypatch.setenv(f"{prefix}_API_KEY_SCOPE", scope)
+    monkeypatch.setenv(f"ALLOW_{prefix}_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv(f"{prefix}_CONSENT_SCOPE", "stale-synthetic-scope")
+    assert profile_factory() is None
+
+    monkeypatch.setenv(f"{prefix}_CONSENT_SCOPE", scope)
+    profile = profile_factory()
+    assert profile is not None
+    assert profile.live is True
+    assert profile.external_ticket_inference_allowed is True
+
+
+def test_generate_rejects_external_profile_without_destination_consent(
+    monkeypatch,
+) -> None:
+    profile = ProviderConfig(
+        provider="openai-compatible",
+        model="synthetic-model",
+        api_key="synthetic-key",
+        base_url="https://models.example/v1",
+        timeout=1,
+        max_calls=1,
+    )
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", "different-synthetic-destination")
+
+    with pytest.raises(ProviderError, match="not approved for this model destination"):
+        asyncio.run(providers.generate(profile, "system", "synthetic ticket"))
+
+
 def test_openai_compatible_request_and_response_shape(monkeypatch) -> None:
     response = FakeResponse({"choices": [{"message": {"content": "Draft text"}}]})
     client = FakeAsyncClient(response=response, timeout=9)
@@ -150,6 +200,7 @@ def test_openai_compatible_request_and_response_shape(monkeypatch) -> None:
         base_url="https://llm.example/v1",
         timeout=9,
         max_calls=4,
+        external_ticket_consent=True,
     )
 
     result = asyncio.run(providers.generate(config, "System", "Prompt"))
@@ -223,6 +274,7 @@ def test_openai_compatible_retries_rate_limit_once(monkeypatch) -> None:
         base_url="https://llm.example/v1",
         timeout=5,
         max_calls=4,
+        external_ticket_consent=True,
     )
 
     assert asyncio.run(providers.generate(config, "System", "Prompt")) == "Draft text"
@@ -250,6 +302,7 @@ def test_anthropic_request_extracts_only_text_blocks(monkeypatch) -> None:
         base_url="",
         timeout=11,
         max_calls=4,
+        external_ticket_consent=True,
     )
 
     result = asyncio.run(providers.generate(config, "System", "Prompt"))
@@ -391,6 +444,7 @@ def test_openai_compatible_rejects_malformed_response(monkeypatch) -> None:
         base_url="https://llm.example/v1",
         timeout=5,
         max_calls=4,
+        external_ticket_consent=True,
     )
 
     with pytest.raises(ProviderError, match="invalid response shape"):
@@ -408,6 +462,7 @@ def test_openai_compatible_rejects_remote_plain_http_before_request(monkeypatch)
         base_url="http://llm.example/v1",
         timeout=5,
         max_calls=4,
+        external_ticket_consent=True,
     )
 
     with pytest.raises(ProviderError, match="must use HTTPS"):

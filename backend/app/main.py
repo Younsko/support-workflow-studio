@@ -1169,17 +1169,15 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             )
     config = ProviderConfig.from_env()
     if (
-        case.source == "jira-service-management"
-        and config.requires_external_ticket_consent
+        config.requires_external_ticket_consent
         and not config.external_ticket_inference_allowed
     ):
         raise HTTPException(
             status_code=403,
-            detail="External ticket inference is off. Review provider terms and set ALLOW_EXTERNAL_TICKET_INFERENCE=true locally before sending ticket text to a model.",
+            detail="External ticket inference is off. Review provider terms and confirm the selected provider and endpoint in Setup before sending ticket text to a model.",
         )
     if (
-        case.source == "jira-service-management"
-        and config.requires_external_ticket_consent
+        config.requires_external_ticket_consent
         and not config.live
     ):
         raise HTTPException(
@@ -1357,22 +1355,20 @@ async def _decide_locked(
             raise HTTPException(status_code=404, detail="Workflow case not found")
         config = ProviderConfig.from_env()
         if (
-            case.source == "jira-service-management"
-            and config.requires_external_ticket_consent
+            config.requires_external_ticket_consent
             and not config.external_ticket_inference_allowed
         ):
             raise HTTPException(
                 status_code=403,
-                detail="External ticket inference is off. Re-enable it locally before asking models to review an edited Jira reply.",
+                detail="External ticket inference is off. Review provider terms and confirm the selected provider and endpoint in Setup before asking a model to review an edited reply.",
             )
         if (
-            case.source == "jira-service-management"
-            and config.requires_external_ticket_consent
+            config.requires_external_ticket_consent
             and not config.live
         ):
             raise HTTPException(
                 status_code=409,
-                detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before reviewing a Jira reply.",
+                detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before reviewing an edited reply.",
             )
         try:
             score, verifier_findings, reviewer_findings = await review_edited_draft(

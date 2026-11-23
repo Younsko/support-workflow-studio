@@ -114,10 +114,16 @@ def _configure_private_local_mode(monkeypatch) -> None:
         "COUNCIL_MODEL",
         "COUNCIL_API_KEY",
         "COUNCIL_BASE_URL",
+        "COUNCIL_API_KEY_SCOPE",
+        "ALLOW_COUNCIL_EXTERNAL_TICKET_INFERENCE",
+        "COUNCIL_CONSENT_SCOPE",
         "JUDGE_PROVIDER",
         "JUDGE_MODEL",
         "JUDGE_API_KEY",
         "JUDGE_BASE_URL",
+        "JUDGE_API_KEY_SCOPE",
+        "ALLOW_JUDGE_EXTERNAL_TICKET_INFERENCE",
+        "JUDGE_CONSENT_SCOPE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -694,7 +700,31 @@ def test_live_model_inference_for_jira_ticket_is_opt_in(monkeypatch) -> None:
         "/api/workflows", json={"case_id": "DEMO-82", "candidate_count": 1}
     )
     assert response.status_code == 403
-    assert "ALLOW_EXTERNAL_TICKET_INFERENCE" in response.json()["detail"]
+    assert "confirm the selected provider and endpoint" in response.json()["detail"]
+
+
+def test_workflow_model_call_does_not_fall_back_when_external_consent_is_missing(
+    monkeypatch,
+) -> None:
+    from app import workflow
+    from app.providers import ProviderConfig, ProviderError
+
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "false")
+    monkeypatch.delenv("MODEL_CONSENT_SCOPE", raising=False)
+    config = ProviderConfig(
+        provider="openai-compatible",
+        model="synthetic-model",
+        api_key="",
+        base_url="https://models.example/v1",
+        timeout=1,
+        max_calls=1,
+    )
+    calls = [0]
+
+    with pytest.raises(ProviderError, match="not approved for this model destination"):
+        asyncio.run(workflow._model_call(config, "system", "synthetic ticket", calls))
+
+    assert calls == [0]
 
 
 def test_jira_inference_fails_closed_when_scoped_key_is_missing(monkeypatch) -> None:

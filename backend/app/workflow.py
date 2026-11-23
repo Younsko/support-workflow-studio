@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .knowledge import retrieve
-from .providers import ProviderConfig, generate
+from .providers import ProviderConfig, ProviderError, generate
 from .schemas import (
     CaseRecord,
     CouncilOption,
@@ -527,6 +527,13 @@ async def _model_call(
     json_mode: bool = False,
     json_schema: dict[str, Any] | None = None,
 ) -> str:
+    if (
+        config.requires_external_ticket_consent
+        and not config.external_ticket_inference_allowed
+    ):
+        raise ProviderError(
+            "External ticket inference is not approved for this model destination."
+        )
     if not config.live:
         return ""
     if counter[0] >= config.max_calls:
@@ -847,7 +854,7 @@ async def run_workflow(
                     id="model-council",
                     label="Blind model council",
                     status="warning",
-                    detail="Live council not run; distinct secondary proposal and independent judge profiles are required.",
+                    detail="Live council not run; distinct secondary and judge profiles need destination-scoped keys and consent before ticket content can be sent.",
                     actor="Configuration required",
                     elapsed_ms=0,
                 )

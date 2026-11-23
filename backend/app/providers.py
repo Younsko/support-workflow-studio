@@ -27,6 +27,7 @@ class ProviderConfig:
     base_url: str
     timeout: float
     max_calls: int
+    external_ticket_consent: bool | None = None
 
     @classmethod
     def from_env(cls) -> ProviderConfig:
@@ -79,6 +80,8 @@ class ProviderConfig:
 
     @property
     def external_ticket_inference_allowed(self) -> bool:
+        if self.external_ticket_consent is not None:
+            return self.external_ticket_consent
         accepted = os.getenv(
             "ALLOW_EXTERNAL_TICKET_INFERENCE", "false"
         ).strip().lower() in {
@@ -93,34 +96,52 @@ class ProviderConfig:
 
     @classmethod
     def council_profile(cls) -> ProviderConfig | None:
-        provider = os.getenv("COUNCIL_PROVIDER", "").strip().lower()
-        model = os.getenv("COUNCIL_MODEL", "").strip()
-        api_key = os.getenv("COUNCIL_API_KEY", "").strip()
-        if not provider or not model or not api_key:
-            return None
-        return cls(
-            provider=provider,
-            model=model,
-            api_key=api_key,
-            base_url=os.getenv("COUNCIL_BASE_URL", "").strip().rstrip("/"),
-            timeout=float(os.getenv("MODEL_TIMEOUT_SECONDS", "30")),
-            max_calls=2,
-        )
+        return cls._scoped_secondary_profile("COUNCIL", max_calls=2)
 
     @classmethod
     def judge_profile(cls) -> ProviderConfig | None:
-        provider = os.getenv("JUDGE_PROVIDER", "").strip().lower()
-        model = os.getenv("JUDGE_MODEL", "").strip()
-        api_key = os.getenv("JUDGE_API_KEY", "").strip()
+        return cls._scoped_secondary_profile("JUDGE", max_calls=1)
+
+    @classmethod
+    def _scoped_secondary_profile(
+        cls, prefix: str, *, max_calls: int
+    ) -> ProviderConfig | None:
+        provider = os.getenv(f"{prefix}_PROVIDER", "").strip().lower()
+        model = os.getenv(f"{prefix}_MODEL", "").strip()
+        api_key = os.getenv(f"{prefix}_API_KEY", "").strip()
+        base_url = os.getenv(f"{prefix}_BASE_URL", "").strip().rstrip("/")
         if not provider or not model or not api_key:
             return None
+        scope = model_destination_scope(provider, base_url)
+        if os.getenv(f"{prefix}_API_KEY_SCOPE", "").strip() != scope:
+            return None
+        probe = cls(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            timeout=float(os.getenv("MODEL_TIMEOUT_SECONDS", "30")),
+            max_calls=max_calls,
+        )
+        consent = True
+        if probe.requires_external_ticket_consent:
+            consent = (
+                os.getenv(
+                    f"ALLOW_{prefix}_EXTERNAL_TICKET_INFERENCE", "false"
+                ).strip().lower()
+                in {"1", "true", "yes"}
+                and os.getenv(f"{prefix}_CONSENT_SCOPE", "").strip() == scope
+            )
+            if not consent:
+                return None
         return cls(
             provider=provider,
             model=model,
             api_key=api_key,
-            base_url=os.getenv("JUDGE_BASE_URL", "").strip().rstrip("/"),
-            timeout=float(os.getenv("MODEL_TIMEOUT_SECONDS", "30")),
-            max_calls=1,
+            base_url=base_url,
+            timeout=probe.timeout,
+            max_calls=max_calls,
+            external_ticket_consent=consent,
         )
 
 
@@ -287,6 +308,13 @@ async def generate(
     prompt: str,
     response_format: dict[str, object] | None = None,
 ) -> str:
+    if (
+        config.requires_external_ticket_consent
+        and not config.external_ticket_inference_allowed
+    ):
+        raise ProviderError(
+            "External ticket inference is not approved for this model destination."
+        )
     if not config.live:
         return ""
     if config.provider == "ollama-local" and not _is_ollama_local_endpoint(
