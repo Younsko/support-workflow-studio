@@ -15,9 +15,9 @@ From incoming requests to evidence-based drafts, with a human decision before an
 
 This 14-second motion design follows a synthetic support request from intake through triage, approved guidance, agent review, a quality gate, human approval, and a separate Jira publication step. It is an animated product vision, not a screen recording of the current app.
 
-<p align="center"><video src="https://raw.githubusercontent.com/Younsko/support-workflow-studio/codex/published-starter-flow/motion_demo/support-workflow-demo.mp4" width="720" controls preload="metadata"></video><br>
-<a href="motion_demo/support-workflow-demo.mp4"><strong>Download the English demo</strong></a><br>
-<a href="motion_demo/Signal-Path-OpenMotion-English.zip">Download the editable OpenMotion source project</a></p>
+![](https://github.com/user-attachments/assets/18cb1554-ef74-4db2-bff0-190f19234f6e)
+
+[Watch or download the full English demo](motion_demo/support-workflow-demo.mp4) · [Editable OpenMotion source project](motion_demo/Signal-Path-OpenMotion-English.zip)
 
 ## Vision
 
