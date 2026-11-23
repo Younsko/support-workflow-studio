@@ -7,8 +7,9 @@ tenant isolation, runner execution, or production persistence.
 
 from __future__ import annotations
 
-from contextlib import closing
+import hashlib
 import sqlite3
+from contextlib import closing
 from dataclasses import asdict
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -148,6 +149,33 @@ class WorkflowRegistry:
                 for row in versions
             ],
         }
+
+    def get_published(self, workflow_id: str, version: int) -> PublishedWorkflow | None:
+        """Load one frozen published snapshot and verify its stored digest."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT content_hash, published_at, payload FROM workflow_versions WHERE workflow_id = ? AND version = ?",
+                (workflow_id, version),
+            ).fetchone()
+        if row is None:
+            return None
+        digest = hashlib.sha256(row["payload"].encode("utf-8")).hexdigest()
+        if digest != row["content_hash"]:
+            raise ValueError("Published workflow snapshot failed its integrity check.")
+        definition = WorkflowDefinition.model_validate_json(row["payload"])
+        if (
+            definition.id != workflow_id
+            or definition.version != version
+            or definition.status != "published"
+        ):
+            raise ValueError("Published workflow identity does not match its registry key.")
+        return PublishedWorkflow(
+            workflow_id=workflow_id,
+            version=version,
+            content_hash=digest,
+            published_at=row["published_at"],
+            _payload=row["payload"],
+        )
 
     def list_audit_events(self, workflow_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
@@ -429,7 +457,7 @@ def publish_workflow_draft(workflow_id: str, write: DraftWrite) -> dict[str, Any
         "definition": frozen.definition(),
         "content_hash": frozen.content_hash,
         "published_at": frozen.published_at,
-        "execution": "not_connected",
+        "execution": "requires_runtime_compile",
     }
 
 

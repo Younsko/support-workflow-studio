@@ -4,7 +4,6 @@ import json
 
 import httpx
 import pytest
-
 from app.confluence import (
     ConfluenceAdapter,
     ConfluenceConfig,

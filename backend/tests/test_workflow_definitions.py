@@ -3,10 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from app.workflow_definitions import (
-    WorkflowDefinition,
     WorkflowConnection,
+    WorkflowDefinition,
     publish_workflow,
     validate_workflow,
 )

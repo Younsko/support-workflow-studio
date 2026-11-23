@@ -26,7 +26,7 @@ class ConfluenceRequestError(RuntimeError):
 _SPACE_KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
 _CONTENT_ID = re.compile(r"^[0-9]{1,32}$")
 _EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b")
-_UUID = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", re.I)
+_UUID = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", re.IGNORECASE)
 _MIXED_IDENTIFIER = re.compile(r"\b(?=[A-Za-z0-9_-]*\d)[A-Za-z][A-Za-z0-9_-]{2,}\b")
 _WORD = re.compile(r"[A-Za-z][A-Za-z_-]{2,30}")
 _STOPWORDS = {
@@ -151,6 +151,9 @@ def _plain_text(value: str) -> str:
 
 class ConfluenceAdapter:
     """A read-only Cloud client that never follows provider-supplied URLs."""
+
+    provider_id = "confluence-cloud"
+    capabilities = frozenset({"connection_check", "search", "versioned_evidence"})
 
     def __init__(self, config: ConfluenceConfig, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         config.validate()

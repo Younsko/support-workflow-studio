@@ -491,7 +491,7 @@ def test_stale_jira_ticket_cannot_be_approved_or_re_reviewed(monkeypatch) -> Non
     assert edit.status_code == 409
     assert "changed after" in edit.json()["detail"].lower()
 
-    current = client.get(f"/api/workflows/latest/DEMO-85").json()
+    current = client.get("/api/workflows/latest/DEMO-85").json()
     assert current["status"] == "awaiting_human"
     assert current["approval_version"] == run["approval_version"]
 
@@ -679,10 +679,10 @@ def test_jira_workspace_and_queue_discovery_map_only_safe_fields(monkeypatch) ->
 
     class FakeResponse:
         status_code = 200
-        headers = {}
         is_error = False
 
         def __init__(self, payload):
+            self.headers = {}
             self.payload = payload
 
         def raise_for_status(self):
@@ -1094,7 +1094,13 @@ def test_itsm_factory_exposes_only_implemented_provider_capabilities() -> None:
     )
     assert adapter.provider_id == "jira-service-management"
     assert adapter.capabilities == frozenset(
-        {"queue_read", "request_refresh", "public_reply"}
+        {
+            "workspace_discovery",
+            "queue_discovery",
+            "queue_read",
+            "request_refresh",
+            "public_reply",
+        }
     )
 
     with pytest.raises(JiraConfigurationError, match="not implemented"):
@@ -1102,8 +1108,6 @@ def test_itsm_factory_exposes_only_implemented_provider_capabilities() -> None:
 
 
 def test_setup_status_reports_token_presence_without_returning_token(monkeypatch) -> None:
-    from app import main
-
     secret = "test-token"
     monkeypatch.setenv("JSM_BASE_URL", "https://example.atlassian.net")
     monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
@@ -1864,3 +1868,28 @@ def test_approved_ticket_reply_publishes_only_after_approval_and_once(monkeypatc
     duplicate_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
     assert duplicate_publish.status_code == 409
     assert len(published) == 1
+
+
+def test_operational_health_probes_are_bounded_and_secret_free(monkeypatch, tmp_path) -> None:
+    import sqlite3
+
+    from app import main
+    from app.store import LocalStore
+
+    store = LocalStore(tmp_path / "health.sqlite3")
+    monkeypatch.setattr(main, "STATE_STORE", store)
+
+    assert client.get("/health/live").json() == {"status": "alive"}
+    ready = client.get("/health/ready")
+    assert ready.status_code == 200
+    assert ready.json() == {"status": "ready", "storage": "available"}
+    assert "provider" not in ready.json()
+    assert "credentials_configured" not in ready.json()
+
+    def unavailable():
+        raise sqlite3.OperationalError("internal storage detail")
+
+    monkeypatch.setattr(store, "check_ready", unavailable)
+    unavailable_response = client.get("/health/ready")
+    assert unavailable_response.status_code == 503
+    assert unavailable_response.json() == {"detail": "Local state storage is not ready."}

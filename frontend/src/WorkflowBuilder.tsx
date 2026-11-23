@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Bot, Check, ChevronDown,
   CircleAlert, ClipboardCheck, Clock3, FileCheck2, FileSearch,
-  GripVertical, History, Inbox, Languages, LockKeyhole, Minus, Plus, Search, Settings2, ShieldCheck,
+  GripVertical, History, Inbox, Languages, LockKeyhole, Minus, Play, Plus, Search, Settings2, ShieldCheck,
   Save, Trash2, UserRoundCheck, Waypoints, X,
 } from 'lucide-react'
 import './WorkflowBuilder.css'
@@ -22,7 +22,7 @@ type WorkflowBundle = {
 }
 type PublishedVersion = WorkflowBundle['published'][number]
 
-type Props = { locale?: WorkflowBuilderLocale; onLocaleChange?: (locale: WorkflowBuilderLocale) => void; onOpenConnections?: () => void; connectionsRevision?: number }
+type Props = { locale?: WorkflowBuilderLocale; onLocaleChange?: (locale: WorkflowBuilderLocale) => void; onOpenConnections?: () => void; onRunPublishedWorkflow?: (workflowId: string, version: number, contentHash: string) => Promise<void>; onOpenRuns?: () => void; canRunPublishedWorkflow?: boolean; runningPublishedWorkflow?: boolean; executionError?: string; connectionsRevision?: number }
 type ConnectionBindings = {
   jiraReady: boolean; knowledgeReady: boolean; knowledgeMode: string
   modelReady: boolean; provider: string; model: string; modelRef: string
@@ -35,10 +35,10 @@ const copy = {
     addNode: 'Add a step', palette: 'Step library', search: 'Search steps', canvas: 'Workflow canvas',
     zoomOut: 'Zoom out', zoomIn: 'Zoom in', fit: 'Fit workflow', inspector: 'Step settings',
     moveEarlier: 'Move step earlier', moveLater: 'Move step later', stepOrder: 'Step order',
-    orderHint: 'The ticket trigger stays first. Reordering changes this linear sequence only; it does not add branching or execution.',
+    orderHint: 'The ticket trigger stays first. Reordering edits the graph; only the supported starter sequence can run.',
     selectNode: 'Select a step to view its settings.', name: 'Name', description: 'Description', model: 'Model provider',
     tools: 'Approved tools', toolKnowledge: 'Search approved knowledge', toolTicket: 'Read ticket details', role: 'Agent role', approvalGate: 'Approval gate', on: 'Required', requiredForWrite: 'Required before any external reply',
-    localNotice: 'Local workflow editor. Ticket execution, team access, and hosted runner are not connected yet.',
+    localNotice: 'Published starter flows can run locally. Team access and hosted runner are not connected yet.',
     save: 'Save draft', publishAction: 'Publish version', saved: 'Saved locally', saving: 'Saving…', publishing: 'Publishing…',
     publishBlocked: 'This flow is not ready to publish. Configure its connections and model first.',
     unsupportedGraph: 'This version has branches or nodes this editor cannot preserve. It is read-only here; saving is blocked to prevent data loss.',
@@ -51,7 +51,7 @@ const copy = {
     nodeTypes: ['Ticket trigger', 'Normalize & triage', 'Knowledge search', 'AI agent', 'Independent verifier', 'Human approval', 'Publish reply'],
     validationTitle: 'Flow validation', valid: 'The flow has one entry point and an approval gate before publishing.',
     invalid: 'Check the flow before using it.', triggerMissing: 'Add a ticket trigger.', approvalMissing: 'Put a human approval step before publishing.', disconnected: 'Every step must be connected to the flow.',
-    removeConfirm: 'Remove this step?', noTools: 'Tool permissions are saved with the draft; runner execution is not connected.', modelLocal: 'Choose a model when a runner is connected',
+    removeConfirm: 'Remove this step?', noTools: 'Execution currently allows approved knowledge search only.', modelLocal: 'Choose a configured model',
     stepCount: 'steps', runTab: 'Runs', workflowTab: 'Workflow', connections: 'Connections', status: 'Not published',
     configure: 'Configure', jiraConnected: 'Jira configured', jiraMissing: 'Jira setup needed',
     knowledgeConnected: 'Knowledge ready', knowledgeDemo: 'Demo knowledge', knowledgeMissing: 'Knowledge setup needed',
@@ -64,7 +64,8 @@ const copy = {
     forkCreated: 'A new draft was created from the latest published version.',
     draftAlreadyExists: 'A draft already exists on the server. Reload the workflow before continuing to avoid overwriting it.',
     forkFailed: 'Could not create a draft from the latest published version.',
-    executionDisclosure: 'Published definitions are immutable snapshots. They do not execute tickets in this local prototype.',
+    executionDisclosure: 'Only the exact linear starter flow can execute. Runs create a reviewed draft; external publication remains a separate human action.',
+    runLatest: 'Run on selected ticket', runningFlow: 'Starting run…', runUnavailable: 'Publish a supported flow and configure Jira, knowledge, and a model before running.',
   },
   fr: {
     eyebrow: 'STUDIO DE WORKFLOWS', title: 'Entrée du support', crumb: 'Workflows', draft: 'Brouillon · local',
@@ -72,10 +73,10 @@ const copy = {
     addNode: 'Ajouter une étape', palette: 'Bibliothèque d’étapes', search: 'Rechercher une étape', canvas: 'Canvas du workflow',
     zoomOut: 'Dézoomer', zoomIn: 'Zoomer', fit: 'Ajuster le workflow', inspector: 'Paramètres de l’étape',
     moveEarlier: 'Déplacer l’étape plus tôt', moveLater: 'Déplacer l’étape plus tard', stepOrder: 'Ordre des étapes',
-    orderHint: 'Le déclencheur reste en premier. Le réordonnancement modifie uniquement cette séquence linéaire ; il n’ajoute ni branchement ni exécution.',
+    orderHint: 'Le déclencheur reste en premier. Le réordonnancement modifie le graphe ; seul le flux de démarrage pris en charge peut être exécuté.',
     selectNode: 'Sélectionnez une étape pour afficher ses paramètres.', name: 'Nom', description: 'Description', model: 'Fournisseur du modèle',
     tools: 'Outils autorisés', toolKnowledge: 'Rechercher dans les sources approuvées', toolTicket: 'Lire les détails du ticket', role: 'Rôle de l’agent', approvalGate: 'Validation humaine', on: 'Requise', requiredForWrite: 'Requise avant toute réponse externe',
-    localNotice: 'Éditeur local. Exécution, accès d’équipe et runner hébergé ne sont pas encore connectés.',
+    localNotice: 'Les flux de démarrage publiés peuvent être exécutés en local. Les accès d’équipe et le runner hébergé ne sont pas encore connectés.',
     save: 'Enregistrer le brouillon', publishAction: 'Publier la version', saved: 'Enregistré localement', saving: 'Enregistrement…', publishing: 'Publication…',
     publishBlocked: 'Ce flux ne peut pas être publié. Configurez ses connexions et son modèle.',
     unsupportedGraph: 'Cette version contient des branches ou des étapes que cet éditeur ne sait pas préserver. Elle est en lecture seule ici; l’enregistrement est bloqué.',
@@ -88,7 +89,7 @@ const copy = {
     nodeTypes: ['Déclencheur ticket', 'Normalisation et triage', 'Recherche documentaire', 'Agent IA', 'Vérificateur indépendant', 'Validation humaine', 'Publier la réponse'],
     validationTitle: 'Validation du flux', valid: 'Le flux a un point d’entrée et une validation avant publication.',
     invalid: 'Corrigez le flux avant de l’utiliser.', triggerMissing: 'Ajoutez un déclencheur de ticket.', approvalMissing: 'Placez une validation humaine avant la publication.', disconnected: 'Toutes les étapes doivent être reliées au flux.',
-    removeConfirm: 'Supprimer cette étape ?', noTools: 'Les droits d’outils sont enregistrés avec le brouillon; le runner n’est pas connecté.', modelLocal: 'Choisissez un modèle lorsqu’un runner sera connecté',
+    removeConfirm: 'Supprimer cette étape ?', noTools: 'Seule la recherche documentaire approuvée est actuellement exécutable.', modelLocal: 'Choisissez un modèle configuré',
     stepCount: 'étapes', runTab: 'Exécutions', workflowTab: 'Workflow', connections: 'Connexions', status: 'Non publié',
     configure: 'Configurer', jiraConnected: 'Jira configuré', jiraMissing: 'Jira à configurer',
     knowledgeConnected: 'Documentation prête', knowledgeDemo: 'Documentation démo', knowledgeMissing: 'Documentation à configurer',
@@ -101,7 +102,8 @@ const copy = {
     forkCreated: 'Un nouveau brouillon a été créé depuis la dernière version publiée.',
     draftAlreadyExists: 'Un brouillon existe déjà sur le serveur. Rechargez le workflow avant de continuer pour éviter de l’écraser.',
     forkFailed: 'Impossible de créer un brouillon depuis la dernière version publiée.',
-    executionDisclosure: 'Les versions publiées sont des instantanés immuables. Elles n’exécutent pas de tickets dans ce prototype local.',
+    executionDisclosure: 'Seul le flux de démarrage linéaire exact est exécutable. Une exécution crée un brouillon à relire ; l’envoi externe reste une action humaine séparée.',
+    runLatest: 'Exécuter sur le ticket sélectionné', runningFlow: 'Démarrage…', runUnavailable: 'Publiez un flux pris en charge et configurez Jira, la documentation et un modèle.',
   },
 } as const
 
@@ -152,7 +154,7 @@ function toDefinition(nodes: FlowNode[], version: number, bindings: ConnectionBi
   const definitionNodes: DefinitionNode[] = nodes.map((node) => {
     let config: Record<string, unknown> = {}
     if (node.kind === 'trigger') config = { connection_ref: bindings?.jiraReady ? 'jira-service-management' : 'unconfigured-jsm-connection' }
-    if (node.kind === 'knowledge') config = { source_ref: bindings?.knowledgeReady ? bindings.knowledgeMode === 'local' ? 'local-approved-knowledge' : 'demo-knowledge' : 'unconfigured-knowledge-source' }
+    if (node.kind === 'knowledge') config = { source_ref: bindings?.knowledgeReady ? bindings.knowledgeMode === 'local' ? 'local-approved-knowledge' : bindings.knowledgeMode === 'confluence' ? 'confluence-approved-knowledge' : 'unconfigured-knowledge-source' : 'unconfigured-knowledge-source' }
     if (node.kind === 'agent') {
       const selectedProviderMatches = !node.provider || node.provider === bindings?.provider
       config = {
@@ -201,7 +203,7 @@ function fromDefinition(definition: Pick<WorkflowDefinition, 'nodes'>): FlowNode
   })
 }
 
-export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocaleChange, onOpenConnections, connectionsRevision = 0 }: Props) {
+export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocaleChange, onOpenConnections, onRunPublishedWorkflow, onOpenRuns, canRunPublishedWorkflow = false, runningPublishedWorkflow = false, executionError = '', connectionsRevision = 0 }: Props) {
   const [localLocale, setLocalLocale] = useState<WorkflowBuilderLocale>(initialLocale)
   const locale = onLocaleChange ? initialLocale : localLocale
   const t = copy[locale]
@@ -608,13 +610,14 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
       </header>
 
       {saveMessage && <div className={`sws-save-message ${saveState}`} role={saveState === 'error' ? 'alert' : 'status'}>{saveMessage}</div>}
+      {executionError && <div className="sws-save-message error" role="alert">{executionError}</div>}
 
       <section className="sws-heading">
         <div><p className="sws-eyebrow">{t.eyebrow}</p><h1>{t.title}</h1><p>{t.subtitle}</p></div>
         <div className="sws-heading-actions">
           <div className="sws-tabs" role="tablist" aria-label={t.title}>
             <button className="active" type="button" role="tab" aria-selected="true"><Waypoints size={14} />{t.workflowTab}</button>
-            <button type="button" role="tab" aria-selected="false" disabled title={t.localNotice}><Clock3 size={14} />{t.runTab}</button>
+            <button type="button" role="tab" aria-selected="false" onClick={onOpenRuns} disabled={!onOpenRuns}><Clock3 size={14} />{t.runTab}</button>
             <button type="button" role="tab" aria-selected="false" aria-haspopup="dialog" onClick={() => void openHistory()}><History size={14} />{t.history}</button>
             <button type="button" role="tab" aria-selected="false" onClick={onOpenConnections}><Settings2 size={14} />{t.connections}</button>
           </div>
@@ -624,6 +627,16 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
             <span className={bindings?.modelReady ? 'ready' : ''}><i />{bindings?.modelReady ? bindings.provider === 'demo' ? t.modelDemo : `${t.modelConfigured} · ${bindings.provider}` : t.modelMissing}</span>
             <button type="button" onClick={onOpenConnections}>{t.configure}</button>
           </div>
+          <button
+            type="button"
+            className="sws-publish-button"
+            title={canRunPublishedWorkflow ? t.runLatest : t.runUnavailable}
+            disabled={!canRunPublishedWorkflow || runningPublishedWorkflow || publishedHistory.length === 0 || !onRunPublishedWorkflow}
+            onClick={() => {
+              const latest = publishedHistory[0]
+              if (latest) void onRunPublishedWorkflow?.(workflowId, latest.definition.version, latest.content_hash)
+            }}
+          ><Play size={14} fill="currentColor" />{runningPublishedWorkflow ? t.runningFlow : t.runLatest}</button>
         </div>
       </section>
 
