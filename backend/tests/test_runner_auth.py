@@ -308,3 +308,74 @@ def test_authenticated_runner_rejects_unlisted_host_and_origin(
             "/api/cases",
             headers={**headers, "Origin": "https://evil.example"},
         ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_external_write_recheck_fails_closed_and_uses_only_the_runner_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    _configure_runner_auth(monkeypatch)
+    config = RunnerAuthConfig.from_env()
+    assert config is not None
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"authorized": True, "role": "Approver"}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            assert kwargs["follow_redirects"] is False
+            assert kwargs["trust_env"] is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, *, headers, json):
+            assert url == "https://control.example/api/v1/runner/session/authorize-action"
+            assert headers == {"Authorization": "Bearer short-runner-session"}
+            assert json == {"action": "publish_ticket_reply"}
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
+    assert await main._recheck_external_write_authorization(
+        config, "short-runner-session"
+    ) == "Approver"
+
+    class DeniedResponse(FakeResponse):
+        status_code = 403
+
+    class DeniedClient(FakeClient):
+        async def post(self, *_args, **_kwargs):
+            return DeniedResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", DeniedClient)
+    with pytest.raises(HTTPException) as denied:
+        await main._recheck_external_write_authorization(
+            config, "short-runner-session"
+        )
+    assert denied.value.status_code == 403
+
+    class UnavailableResponse(FakeResponse):
+        status_code = 503
+
+    class UnavailableClient(FakeClient):
+        async def post(self, *_args, **_kwargs):
+            return UnavailableResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", UnavailableClient)
+    with pytest.raises(HTTPException) as unavailable:
+        await main._recheck_external_write_authorization(
+            config, "short-runner-session"
+        )
+    assert unavailable.value.status_code == 503
+
+    with pytest.raises(HTTPException) as missing_token:
+        await main._recheck_external_write_authorization(config, None)
+    assert missing_token.value.status_code == 401

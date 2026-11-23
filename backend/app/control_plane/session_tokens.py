@@ -332,3 +332,91 @@ def verify_workspace_session(
     ):
         raise SessionTokenInvalid("Runner session token is outside its configured scope.")
     return claims
+
+
+def verify_workspace_session_with_signing_config(
+    token: str,
+    *,
+    config: SessionSigningConfig,
+    audience: str | None = None,
+    workspace_id: str | None = None,
+    runner_id: str | None = None,
+) -> dict[str, Any]:
+    """Verify a runner session against this control plane's active key set."""
+    if not token or len(token) > 16_384:
+        raise SessionTokenInvalid("Runner session token is invalid.")
+    try:
+        import jwt
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+
+        unverified = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_nbf": False,
+                "verify_iat": False,
+                "verify_aud": False,
+                "verify_iss": False,
+            },
+        )
+        token_audience = unverified.get("aud")
+        token_workspace_id = unverified.get("workspace_id")
+        token_runner_id = unverified.get("runner_id")
+        expected_audience = audience or token_audience
+        expected_workspace_id = workspace_id or token_workspace_id
+        expected_runner_id = runner_id or token_runner_id
+        if (
+            not isinstance(expected_audience, str)
+            or not isinstance(expected_workspace_id, str)
+            or not isinstance(expected_runner_id, str)
+            or (audience is not None and token_audience != audience)
+            or (workspace_id is not None and token_workspace_id != workspace_id)
+            or (runner_id is not None and token_runner_id != runner_id)
+        ):
+            raise SessionTokenInvalid("Runner session token is outside its configured scope.")
+        header = jwt.get_unverified_header(token)
+        key_id = header.get("kid")
+        jwk = next(
+            (item for item in config.public_jwks if item.get("kid") == key_id), None
+        )
+        if jwk is None:
+            raise SessionTokenInvalid("Runner session token is invalid.")
+        public_key = RSAPublicNumbers(
+            _decode_base64url_integer(jwk["e"]),
+            _decode_base64url_integer(jwk["n"]),
+        ).public_key()
+        claims = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            issuer=config.issuer,
+            audience=expected_audience,
+            leeway=SESSION_LEEWAY_SECONDS,
+            options={
+                "require": [
+                    "iss", "sub", "aud", "workspace_id", "runner_id", "role",
+                    "iat", "nbf", "exp", "jti",
+                ]
+            },
+        )
+    except SessionTokenInvalid:
+        raise
+    except (jwt.PyJWTError, TypeError, ValueError, KeyError) as exc:
+        raise SessionTokenInvalid("Runner session token is invalid.") from exc
+
+    if (
+        claims.get("workspace_id") != expected_workspace_id
+        or claims.get("runner_id") != expected_runner_id
+        or not _RESOURCE_ID_PATTERN.fullmatch(str(claims.get("workspace_id", "")))
+        or not _RESOURCE_ID_PATTERN.fullmatch(str(claims.get("runner_id", "")))
+        or claims.get("aud") != expected_audience
+        or claims.get("role") not in SESSION_ROLES
+        or not isinstance(claims.get("sub"), str)
+        or not claims["sub"]
+        or not isinstance(claims.get("jti"), str)
+        or not claims["jti"]
+        or len(claims["jti"]) > 128
+    ):
+        raise SessionTokenInvalid("Runner session token is outside its configured scope.")
+    return claims

@@ -13,6 +13,7 @@ from app.control_plane.session_tokens import (
     SessionTokenInvalid,
     issue_workspace_session,
     verify_workspace_session,
+    verify_workspace_session_with_signing_config,
 )
 
 
@@ -76,6 +77,16 @@ def test_workspace_session_is_short_lived_and_bound_to_workspace_and_runner(
     assert claims["exp"] == expires_at
     assert claims["exp"] - claims["iat"] == 180
     assert claims["jti"]
+    locally_verified = verify_workspace_session_with_signing_config(
+        token, config=config
+    )
+    assert locally_verified["sub"] == principal.subject
+    with pytest.raises(SessionTokenInvalid):
+        verify_workspace_session_with_signing_config(
+            token,
+            config=config,
+            audience="d" * 32,
+        )
     with pytest.raises(SessionTokenInvalid):
         verify_workspace_session(
             token,

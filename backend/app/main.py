@@ -16,6 +16,7 @@ from statistics import median
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+import httpx
 from dotenv import load_dotenv, set_key, unset_key
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -1808,8 +1809,16 @@ async def publish_ticket_reply(run_id: str, request: Request) -> dict[str, objec
         )
     lock = PUBLISH_LOCKS.setdefault(run_id, asyncio.Lock())
     async with lock:
+        auth_config = RunnerAuthConfig.from_env()
         return await _publish_ticket_reply_locked(
-            run_id, actor_metadata=_audit_actor_metadata(request)
+            run_id,
+            actor_metadata=_audit_actor_metadata(request),
+            runner_auth_config=auth_config,
+            runner_session_token=(
+                request.headers.get("authorization", "").partition(" ")[2].strip()
+                if auth_config is not None
+                else None
+            ),
         )
 
 
@@ -1821,7 +1830,11 @@ def _audit_actor_metadata(request: Request) -> dict[str, object]:
 
 
 async def _publish_ticket_reply_locked(
-    run_id: str, *, actor_metadata: dict[str, object] | None = None
+    run_id: str,
+    *,
+    actor_metadata: dict[str, object] | None = None,
+    runner_auth_config: RunnerAuthConfig | None = None,
+    runner_session_token: str | None = None,
 ) -> dict[str, object]:
     result = RUNS.get(run_id)
     if result is None:
@@ -1862,6 +1875,11 @@ async def _publish_ticket_reply_locked(
             status_code=409,
             detail="The Jira request changed after this workflow reviewed it. Sync and rerun triage, then approve the new draft before publishing.",
         )
+    if runner_auth_config is not None:
+        current_role = await _recheck_external_write_authorization(
+            runner_auth_config, runner_session_token
+        )
+        actor_metadata = {**(actor_metadata or {}), "actor_role": current_role}
     # An interrupted request is ambiguous. Keep this run closed to retries.
     result.ticket_comment_outcome = "unknown"
     _save_run(
@@ -1930,6 +1948,59 @@ async def _publish_ticket_reply_locked(
         ),
     )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
+
+
+async def _recheck_external_write_authorization(
+    config: RunnerAuthConfig, token: str | None
+) -> str:
+    """Fail closed if current workspace membership cannot authorize this Jira write."""
+    if not token:
+        raise HTTPException(status_code=401, detail="A workspace runner session is required.")
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0, connect=2.0),
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            response = await client.post(
+                f"{config.control_plane_api_url}/api/v1/runner/session/authorize-action",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"action": "publish_ticket_reply"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Current workspace authorization could not be verified; Jira was not changed.",
+        ) from exc
+    if response.status_code in {401, 403, 404}:
+        raise HTTPException(
+            status_code=403,
+            detail="Current workspace membership or role does not authorize Jira publication.",
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=503,
+            detail="Current workspace authorization could not be verified; Jira was not changed.",
+        )
+    try:
+        payload = response.json()
+        if payload.get("authorized") is not True:
+            raise HTTPException(
+                status_code=403,
+                detail="Current workspace role does not authorize Jira publication.",
+            )
+        role = payload.get("role")
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Current workspace authorization returned an invalid response; Jira was not changed.",
+        ) from exc
+    if role not in {"Owner", "Admin", "Approver"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Current workspace role does not authorize Jira publication.",
+        )
+    return str(role)
 
 
 def _matches_reviewed_ticket(

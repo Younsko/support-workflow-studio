@@ -1,7 +1,8 @@
 """Authenticated metadata-only control-plane API.
 
 Run this ASGI app separately from the ticket runner. It accepts identity and
-workspace metadata only; it is not yet the UI's auth server or a runner relay.
+workspace metadata only. Browser sign-in uses the configured OIDC provider;
+ticket content stays in the support runner and never passes through a relay here.
 """
 
 # FastAPI dependency calls in defaults are its standard injection syntax.
@@ -41,6 +42,7 @@ from .session_tokens import (
     SessionTokenInvalid,
     issue_workspace_session,
     public_jwks,
+    verify_workspace_session_with_signing_config,
 )
 from .store import (
     InvitationInvalid,
@@ -124,6 +126,12 @@ class RunnerEnrollmentCreate(BaseModel):
         if not value:
             raise ValueError("Runner name cannot be blank.")
         return value
+
+
+class RunnerActionAuthorization(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["publish_ticket_reply"]
 
 
 def _configured_browser_origins() -> list[str]:
@@ -267,7 +275,7 @@ def create_control_plane_app(
     @app.get("/health/ready")
     def ready(
         control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         control_store.check_ready()
         return {"status": "ready"}
 
@@ -492,6 +500,38 @@ def create_control_plane_app(
             "workspace_id": workspace_id,
             "runner_id": runner_id,
         }
+
+    @app.post("/api/v1/runner/session/authorize-action")
+    def authorize_runner_action(
+        body: RunnerActionAuthorization,
+        response: Response,
+        authorization: str | None = Header(default=None),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        scheme, separator, token = (authorization or "").partition(" ")
+        if scheme.casefold() != "bearer" or not separator or not token.strip():
+            raise HTTPException(status_code=401, detail="A workspace runner session is required.")
+        try:
+            signing = SessionSigningConfig.from_env()
+            claims = verify_workspace_session_with_signing_config(
+                token.strip(),
+                config=signing,
+            )
+        except SessionTokenInvalid as exc:
+            raise HTTPException(status_code=401, detail="The workspace runner session is invalid.") from exc
+        except SessionTokenConfigurationError as exc:
+            raise HTTPException(status_code=503, detail="Workspace session validation is unavailable.") from exc
+        try:
+            role = control_store.authorize_runner_action(
+                claims["workspace_id"], claims["runner_id"], claims["sub"], body.action
+            )
+        except MembershipDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except WorkspaceNotFound as exc:
+            raise HTTPException(status_code=403, detail="Current workspace membership or runner access is inactive.") from exc
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        return {"authorized": True, "role": role}
 
     @app.get("/api/v1/workspaces/{workspace_id}/runners")
     def list_runners(

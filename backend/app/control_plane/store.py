@@ -762,6 +762,50 @@ class PostgresControlPlaneStore:
             )
             return row["role"]
 
+    def authorize_runner_action(
+        self,
+        workspace_id: str,
+        runner_id: str,
+        subject: str,
+        action: str,
+        *,
+        now: datetime | None = None,
+    ) -> str:
+        """Recheck membership and runner state immediately before an external write."""
+        if action != "publish_ticket_reply":
+            raise MembershipDenied("Workspace action is not permitted.")
+        self._validate_workspace_id(workspace_id)
+        if not _SAFE_WORKSPACE_ID.fullmatch(runner_id):
+            raise WorkspaceNotFound(workspace_id)
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT m.role, r.expires_at, r.revoked_at
+                   FROM cp_memberships AS m
+                   JOIN cp_runners AS r ON r.workspace_id=m.workspace_id
+                   WHERE m.workspace_id=%s AND m.subject=%s AND r.id=%s
+                   FOR SHARE OF m, r""",
+                (workspace_id, subject, runner_id),
+            ).fetchone()
+            if (
+                row is None
+                or row["revoked_at"] is not None
+                or row["expires_at"] <= timestamp
+            ):
+                raise WorkspaceNotFound(workspace_id)
+            if row["role"] not in {"Owner", "Admin", "Approver"}:
+                raise MembershipDenied("Current workspace role cannot publish replies.")
+            self._audit(
+                connection,
+                workspace_id=workspace_id,
+                actor_subject=subject,
+                event_type="runner.external_write_authorized",
+                target_type="runner",
+                target_id=runner_id,
+                now=timestamp,
+            )
+            return row["role"]
+
     def revoke_runner(
         self,
         workspace_id: str,

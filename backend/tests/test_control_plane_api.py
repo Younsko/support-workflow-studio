@@ -5,6 +5,11 @@ from time import time
 import pytest
 from app.control_plane.api import create_control_plane_app, get_control_plane_store
 from app.control_plane.auth import Principal, current_principal
+from app.control_plane.session_tokens import (
+    SessionSigningConfig,
+    issue_workspace_session,
+)
+from app.control_plane.store import MembershipDenied, WorkspaceNotFound
 from fastapi.testclient import TestClient
 
 
@@ -138,6 +143,94 @@ def test_runner_session_is_workspace_and_runner_bound_and_non_cacheable(monkeypa
     assert "private" not in TestClient(app).get(
         "/.well-known/runner-session-jwks.json"
     ).text.casefold()
+
+
+def test_runner_external_write_authorization_rechecks_current_membership(monkeypatch) -> None:
+    pytest.importorskip("jwt")
+    pytest.importorskip("cryptography.hazmat.primitives.serialization")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import NoEncryption
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=NoEncryption(),
+    ).decode("utf-8")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_ISSUER", "https://control.example.test")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_KEY_ID", "write-check-key")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_SIGNING_PRIVATE_KEY_PEM", private_pem)
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_PREVIOUS_PUBLIC_KEYS_JSON", "[]")
+    signing = SessionSigningConfig.from_env()
+    principal = Principal("idp|approver", "approver@example.test", expires_at=int(time()) + 600)
+    token, _ = issue_workspace_session(
+        principal,
+        workspace_id="b" * 32,
+        runner_id="a" * 32,
+        role="Approver",
+        config=signing,
+    )
+
+    class StoreStub:
+        def __init__(self, role: str | None) -> None:
+            self.role = role
+            self.calls: list[tuple[str, str, str, str]] = []
+
+        def authorize_runner_action(self, workspace_id, runner_id, subject, action):
+            self.calls.append((workspace_id, runner_id, subject, action))
+            if self.role is None:
+                raise WorkspaceNotFound(workspace_id)
+            if self.role not in {"Owner", "Admin", "Approver"}:
+                raise MembershipDenied("Current workspace role cannot publish replies.")
+            return self.role
+
+    store = StoreStub("Approver")
+    app = create_control_plane_app()
+    app.dependency_overrides[get_control_plane_store] = lambda: store
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    allowed = client.post(
+        "/api/v1/runner/session/authorize-action",
+        json={"action": "publish_ticket_reply"},
+        headers=headers,
+    )
+    assert allowed.status_code == 200
+    assert allowed.headers["cache-control"] == "no-store"
+    assert allowed.json() == {"authorized": True, "role": "Approver"}
+    assert store.calls == [
+        ("b" * 32, "a" * 32, "idp|approver", "publish_ticket_reply")
+    ]
+
+    store.role = "Operator"
+    downgraded = client.post(
+        "/api/v1/runner/session/authorize-action",
+        json={"action": "publish_ticket_reply"},
+        headers=headers,
+    )
+    assert downgraded.status_code == 403
+
+    store.role = None
+    removed = client.post(
+        "/api/v1/runner/session/authorize-action",
+        json={"action": "publish_ticket_reply"},
+        headers=headers,
+    )
+    assert removed.status_code == 403
+
+    malformed = client.post(
+        "/api/v1/runner/session/authorize-action",
+        json={"action": "anything_else"},
+        headers=headers,
+    )
+    assert malformed.status_code == 422
+
+    unsigned = client.post(
+        "/api/v1/runner/session/authorize-action",
+        json={"action": "publish_ticket_reply"},
+    )
+    assert unsigned.status_code == 401
 
 
 def test_audit_limit_is_rejected_at_the_http_boundary() -> None:
