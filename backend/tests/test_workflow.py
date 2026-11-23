@@ -496,6 +496,67 @@ def test_stale_jira_ticket_cannot_be_approved_or_re_reviewed(monkeypatch) -> Non
     assert current["approval_version"] == run["approval_version"]
 
 
+def test_jira_edit_after_display_limit_blocks_approval(monkeypatch) -> None:
+    from app.ticket_snapshot import jira_ticket_fingerprint
+
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    configure_test_knowledge(monkeypatch)
+    monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", "synthetic-token")
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "1")
+    monkeypatch.setenv("JSM_QUEUE_ID", "2")
+    description = "x" * 4_000 + "original tail"
+    CASES["DEMO-86"] = CaseRecord(
+        id="DEMO-86",
+        external_key="DEMO-86",
+        source="jira-service-management",
+        title="Synthetic long Jira issue",
+        requester="Synthetic Requester",
+        channel="Jira Service Management",
+        created_at="2026-11-22T09:00:00Z",
+        priority="High",
+        category="Support request",
+        status="Open",
+        body=description[:4_000],
+        impact="Synthetic single-user example",
+    )
+    ticket_details = {
+        "summary": "Synthetic long Jira issue",
+        "description": description[:4_000],
+        "status": "Open",
+        "source_snapshot_hash": jira_ticket_fingerprint(
+            "Synthetic long Jira issue", description, "Open"
+        ),
+    }
+
+    class FakeAdapter:
+        async def get_request_details(self, _issue_key):
+            return dict(ticket_details)
+
+        async def publish_public_reply(self, _issue_key, _body):
+            raise AssertionError("A stale ticket must not be approved or published")
+
+    from app import main
+
+    monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
+    run = client.post(
+        "/api/workflows", json={"case_id": "DEMO-86", "candidate_count": 1}
+    ).json()
+
+    changed_description = "x" * 4_000 + "changed tail"
+    assert ticket_details["description"] == changed_description[:4_000]
+    ticket_details["source_snapshot_hash"] = jira_ticket_fingerprint(
+        "Synthetic long Jira issue", changed_description, "Open"
+    )
+    approval = client.post(
+        f"/api/workflows/{run['id']}/decision",
+        json={"decision": "approve", "expected_version": run["approval_version"]},
+    )
+    assert approval.status_code == 409
+    assert "changed after" in approval.json()["detail"].lower()
+
+
 def test_jira_queue_read_maps_only_bounded_queue_fields(monkeypatch) -> None:
     class FakeResponse:
         def raise_for_status(self):
@@ -559,6 +620,58 @@ def test_jira_queue_read_maps_only_bounded_queue_fields(monkeypatch) -> None:
     assert cases[0].external_key == "HELP-19"
     assert cases[0].body == "Crash after update"
     assert cases[0].source == "jira-service-management"
+
+
+def test_jira_detail_fingerprint_includes_text_beyond_display_limit(monkeypatch) -> None:
+    from app import itsm
+
+    description = {"value": "x" * 4_000 + "original tail"}
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, text):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "requestFieldValues": [
+                    {"fieldId": "summary", "value": "Synthetic long issue"},
+                    {"fieldId": "description", "value": description["value"]},
+                ],
+                "currentStatus": {"status": "Open", "statusCategory": "NEW"},
+            }
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _path):
+            return FakeResponse(description)
+
+    monkeypatch.setattr(itsm, "_http_client", lambda _config: FakeClient())
+    config = JiraConfig(
+        base_url="https://demo.atlassian.net",
+        email="agent@example.com",
+        api_token="synthetic-token",
+        service_desk_id="1",
+        queue_id="2",
+    )
+    details = asyncio.run(itsm.get_request_details(config, "HELP-20"))
+    assert details["description"] == description["value"][:4_000]
+    assert details["source_snapshot_hash"] == itsm.jira_ticket_fingerprint(
+        "Synthetic long issue", description["value"], "Open"
+    )
+    description["value"] = "x" * 4_000 + "changed tail"
+    refreshed = asyncio.run(itsm.get_request_details(config, "HELP-20"))
+    assert refreshed["description"] == details["description"]
+    assert refreshed["source_snapshot_hash"] != details["source_snapshot_hash"]
 
 
 def test_jira_workspace_and_queue_discovery_map_only_safe_fields(monkeypatch) -> None:

@@ -532,7 +532,11 @@ async def _poll_jira_once() -> None:
                 )
                 CASES[case.id] = case
                 _save_case(case)
-                result = await run_workflow(case, provider)
+                result = await run_workflow(
+                    case,
+                    provider,
+                    source_snapshot_hash=_source_snapshot_hash(details, case),
+                )
             except (
                 ITSMConfigurationError,
                 ITSMRequestError,
@@ -1351,12 +1355,18 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             status_code=409,
             detail="The selected external model credentials are not configured for this provider destination. Re-enter the API key in Setup before processing Jira tickets.",
         )
+    source_snapshot_hash: str | None = None
     if case.source == "jira-service-management":
         try:
             details = await create_itsm_adapter("jira-service-management").get_request_details(case.external_key or case.id)
             case = case.model_copy(
-                update={"title": details["summary"], "body": details["description"]}
+                update={
+                    "title": details["summary"],
+                    "body": details["description"],
+                    "status": str(details.get("status") or case.status),
+                }
             )
+            source_snapshot_hash = _source_snapshot_hash(details, case)
             CASES[case.id] = case
             _save_case(case)
         except ITSMConfigurationError as exc:
@@ -1369,6 +1379,7 @@ async def _start_workflow_locked(request: RunRequest) -> WorkflowResult:
             config,
             request.candidate_count,
             request.include_model_council,
+            source_snapshot_hash=source_snapshot_hash,
         )
     except KnowledgeConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1507,16 +1518,46 @@ def _matches_reviewed_ticket(
 ) -> bool:
     summary = latest_details.get("summary")
     description = latest_details.get("description")
+    status = latest_details.get("status")
+    refreshed_hash = latest_details.get("source_snapshot_hash")
+    if (
+        not isinstance(refreshed_hash, str)
+        or len(refreshed_hash) != 64
+        or any(character not in "0123456789abcdef" for character in refreshed_hash.lower())
+    ):
+        refreshed_hash = (
+            content_fingerprint(summary, description, status)
+            if isinstance(summary, str)
+            and isinstance(description, str)
+            and isinstance(status, str)
+            else None
+        )
     return (
         isinstance(summary, str)
         and isinstance(description, str)
-        and isinstance(latest_details.get("status"), str)
+        and isinstance(status, str)
         and summary == case.title
         and description == case.body
-        and latest_details["status"] == case.status
+        and status == case.status
         and bool(result.source_snapshot_hash)
-        and content_fingerprint(summary, description, latest_details["status"])
-        == result.source_snapshot_hash
+        and refreshed_hash == result.source_snapshot_hash
+    )
+
+
+def _source_snapshot_hash(
+    details: dict[str, object], case: CaseRecord
+) -> str:
+    candidate = details.get("source_snapshot_hash")
+    if (
+        isinstance(candidate, str)
+        and len(candidate) == 64
+        and all(character in "0123456789abcdef" for character in candidate.lower())
+    ):
+        return candidate.lower()
+    return content_fingerprint(
+        str(details.get("summary", case.title)),
+        str(details.get("description", case.body)),
+        str(details.get("status", case.status)),
     )
 
 
