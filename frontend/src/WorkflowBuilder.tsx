@@ -10,7 +10,7 @@ import './WorkflowBuilder.css'
 export type WorkflowBuilderLocale = 'en' | 'fr'
 
 type NodeKind = 'trigger' | 'triage' | 'knowledge' | 'agent' | 'verify' | 'approval' | 'publish'
-type FlowNode = { id: string; kind: NodeKind; title: string; subtitle: string; definitionType?: string; role?: string; provider?: string; modelRef?: string; allowedTools?: string[]; active?: boolean }
+type FlowNode = { id: string; kind: NodeKind; title: string; subtitle: string; localeGenerated?: boolean; definitionType?: string; role?: string; provider?: string; modelRef?: string; allowedTools?: string[]; active?: boolean }
 type DefinitionNode = { id: string; type: string; name: string; config: Record<string, unknown> }
 type WorkflowDefinition = {
   schema_version: 1; id: string; name: string; version: number; status: 'draft'
@@ -21,7 +21,7 @@ type WorkflowBundle = {
   published: { definition: Omit<WorkflowDefinition, 'status'> & { status: 'published' }; published_at: string; content_hash: string }[]
 }
 
-type Props = { locale?: WorkflowBuilderLocale; onOpenConnections?: () => void; connectionsRevision?: number }
+type Props = { locale?: WorkflowBuilderLocale; onLocaleChange?: (locale: WorkflowBuilderLocale) => void; onOpenConnections?: () => void; connectionsRevision?: number }
 type ConnectionBindings = {
   jiraReady: boolean; knowledgeReady: boolean; knowledgeMode: string
   modelReady: boolean; provider: string; model: string; modelRef: string
@@ -82,15 +82,21 @@ const copy = {
   },
 } as const
 
-const makeStarter = (t: (typeof copy)[WorkflowBuilderLocale]): FlowNode[] => [
-  { id: 'ticket', kind: 'trigger', title: t.ticket, subtitle: t.ticketSub },
-  { id: 'triage', kind: 'triage', title: t.triage, subtitle: t.triageSub },
-  { id: 'knowledge', kind: 'knowledge', title: t.knowledge, subtitle: t.knowledgeSub },
-  { id: 'agent', kind: 'agent', title: t.agent, subtitle: t.agentSub, role: 'Support analyst', provider: '', modelRef: 'unconfigured-model', allowedTools: ['knowledge.search'] },
-  { id: 'verify', kind: 'verify', title: t.verify, subtitle: t.verifySub },
-  { id: 'approval', kind: 'approval', title: t.approval, subtitle: t.approvalSub },
-  { id: 'publish', kind: 'publish', title: t.publish, subtitle: t.publishSub },
-]
+function defaultNodeText(kind: NodeKind, t: (typeof copy)[WorkflowBuilderLocale]) {
+  const text = {
+    trigger: { title: t.ticket, subtitle: t.ticketSub }, triage: { title: t.triage, subtitle: t.triageSub },
+    knowledge: { title: t.knowledge, subtitle: t.knowledgeSub }, agent: { title: t.agent, subtitle: t.agentSub },
+    verify: { title: t.verify, subtitle: t.verifySub }, approval: { title: t.approval, subtitle: t.approvalSub },
+    publish: { title: t.publish, subtitle: t.publishSub },
+  }
+  return text[kind]
+}
+
+const makeStarter = (t: (typeof copy)[WorkflowBuilderLocale]): FlowNode[] => (['trigger', 'triage', 'knowledge', 'agent', 'verify', 'approval', 'publish'] as NodeKind[]).map((kind) => ({
+  id: ({ trigger: 'ticket', triage: 'triage', knowledge: 'knowledge', agent: 'agent', verify: 'verify', approval: 'approval', publish: 'publish' })[kind],
+  kind, ...defaultNodeText(kind, t), localeGenerated: true,
+  ...(kind === 'agent' ? { role: 'Support analyst', provider: '', modelRef: 'unconfigured-model', allowedTools: ['knowledge.search'] } : {}),
+}))
 
 const icons = {
   trigger: Inbox, triage: ArrowDownUp, knowledge: FileSearch, agent: Bot,
@@ -155,8 +161,15 @@ function fromDefinition(definition: Pick<WorkflowDefinition, 'nodes'>): FlowNode
     const kind = node.type === 'ticket.normalize' ? 'triage' : kindByNodeType[node.type]
     if (!kind) return []
     const subtitle = typeof node.config.instructions === 'string' ? node.config.instructions : node.type
+    const labelsEn = defaultNodeText(kind, copy.en)
+    const labelsFr = defaultNodeText(kind, copy.fr)
+    const isDefaultTitle = node.name === labelsEn.title || node.name === labelsFr.title
+    const localeGenerated = kind === 'agent'
+      ? (node.name === labelsEn.title && subtitle === labelsEn.subtitle) || (node.name === labelsFr.title && subtitle === labelsFr.subtitle)
+      : isDefaultTitle
     return [{
       id: node.id, kind, title: node.name, subtitle, definitionType: node.type,
+      localeGenerated,
       role: typeof node.config.role === 'string' ? node.config.role : undefined,
       provider: typeof node.config.provider === 'string' ? node.config.provider : undefined,
       modelRef: typeof node.config.model_ref === 'string' ? node.config.model_ref : undefined,
@@ -165,8 +178,9 @@ function fromDefinition(definition: Pick<WorkflowDefinition, 'nodes'>): FlowNode
   })
 }
 
-export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenConnections, connectionsRevision = 0 }: Props) {
-  const [locale, setLocale] = useState<WorkflowBuilderLocale>(initialLocale)
+export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocaleChange, onOpenConnections, connectionsRevision = 0 }: Props) {
+  const [localLocale, setLocalLocale] = useState<WorkflowBuilderLocale>(initialLocale)
+  const locale = onLocaleChange ? initialLocale : localLocale
   const t = copy[locale]
   const [nodes, setNodes] = useState<FlowNode[]>(() => makeStarter(t))
   const [selectedId, setSelectedId] = useState('agent')
@@ -184,6 +198,18 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
   const [saveMessage, setSaveMessage] = useState('')
   const [bindings, setBindings] = useState<ConnectionBindings | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const copyRef = useRef(t)
+  const localeRef = useRef(locale)
+  copyRef.current = t
+  localeRef.current = locale
+
+  useEffect(() => {
+    const translated = makeStarter(copy[locale]).reduce((result, node) => {
+      result[node.kind] = { title: node.title, subtitle: node.subtitle }
+      return result
+    }, {} as Record<NodeKind, { title: string; subtitle: string }>)
+    setNodes((current) => current.map((node) => node.localeGenerated ? { ...node, ...translated[node.kind] } : node))
+  }, [locale])
 
   useEffect(() => {
     let cancelled = false
@@ -236,7 +262,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
             setDraftRevision(bundle.draft.revision)
             setWorkflowVersion(bundle.draft.definition.version)
             setSaveState('error')
-            setSaveMessage(t.unsupportedGraph)
+            setSaveMessage(copyRef.current.unsupportedGraph)
             return
           }
           const restored = fromDefinition(bundle.draft.definition)
@@ -247,14 +273,14 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
           setDraftRevision(bundle.draft.revision)
           setWorkflowVersion(bundle.draft.definition.version)
           setSaveState('saved')
-          setSaveMessage(t.saved)
+          setSaveMessage(copyRef.current.saved)
         } else if (!cancelled && bundle.published.length > 0) {
           const latest = bundle.published[0].definition
           if (!isEditableLinear(latest)) {
             setUnsupportedGraph(true)
             setWorkflowVersion(latest.version + 1)
             setSaveState('error')
-            setSaveMessage(t.unsupportedGraph)
+            setSaveMessage(copyRef.current.unsupportedGraph)
             return
           }
           const restored = fromDefinition(latest)
@@ -264,15 +290,15 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
           }
           setWorkflowVersion(latest.version + 1)
           setSaveState('saved')
-          setSaveMessage(locale === 'fr' ? 'Version publiée chargée · enregistrez pour créer un nouveau brouillon' : 'Published version loaded · save to create a new draft')
+          setSaveMessage(localeRef.current === 'fr' ? 'Version publiée chargée · enregistrez pour créer un nouveau brouillon' : 'Published version loaded · save to create a new draft')
         }
       } catch {
-        if (!cancelled) setSaveMessage(t.localNotice)
+        if (!cancelled) setSaveMessage(copyRef.current.localNotice)
       }
     }
     void loadWorkflow()
     return () => { cancelled = true }
-  }, [locale, t.localNotice, t.saved])
+  }, [workflowId])
 
   const selected = nodes.find((node) => node.id === selectedId)
   const paletteItems = useMemo(() => {
@@ -390,7 +416,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
       verify: t.verifySub, approval: t.approvalSub, publish: t.publishSub,
     }
     const node: FlowNode = {
-      id: `${kind}-${crypto.randomUUID()}`, kind, title, subtitle: defaults[kind],
+      id: `${kind}-${crypto.randomUUID()}`, kind, title, subtitle: defaults[kind], localeGenerated: true,
       ...(kind === 'agent' ? { role: 'Support analyst', provider: '', modelRef: 'unconfigured-model', allowedTools: ['knowledge.search'] } : {}),
     }
     setNodes((current) => {
@@ -410,7 +436,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
 
   function updateSelected(field: 'title' | 'subtitle' | 'role' | 'provider', value: string) {
     if (!selected || unsupportedGraph || saveState === 'saving' || saveState === 'publishing') return
-    setNodes((current) => current.map((node) => node.id === selected.id ? { ...node, [field]: value } : node))
+    setNodes((current) => current.map((node) => node.id === selected.id ? { ...node, [field]: value, localeGenerated: false } : node))
     setSaveState('local')
     setSaveMessage('')
   }
@@ -441,12 +467,12 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenCo
   }
 
   return (
-    <section className="sws-builder" aria-label={t.title}>
+    <section className="sws-builder" lang={locale} aria-label={t.title}>
       <header className="sws-topbar">
         <div className="sws-crumb"><Waypoints size={16} /><span>{t.crumb}</span><ArrowRight size={13} /><b>{t.title}</b></div>
         <div className="sws-top-actions">
           <span className={`sws-draft-pill ${saveState === 'error' ? 'error' : ''}`}><span />{saveState === 'saving' ? t.saving : saveState === 'publishing' ? t.publishing : saveState === 'saved' ? t.saved : t.draft}</span>
-          <button className="sws-language-toggle" type="button" onClick={() => setLocale((current) => current === 'en' ? 'fr' : 'en')} aria-label={locale === 'en' ? 'Switch language to French' : 'Changer la langue en anglais'}><Languages size={14} />{locale.toUpperCase()}</button>
+          <button className="sws-language-toggle" type="button" onClick={() => { const nextLocale = locale === 'en' ? 'fr' : 'en'; setLocalLocale(nextLocale); onLocaleChange?.(nextLocale) }} aria-label={locale === 'en' ? 'Switch language to French' : 'Changer la langue en anglais'}><Languages size={14} />{locale.toUpperCase()}</button>
           <button className="sws-validate" type="button" onClick={validateFlow}><Check size={15} />{t.validate}</button>
           <button className="sws-save" type="button" onClick={() => void saveDraft()} disabled={saveState === 'saving' || saveState === 'publishing'}><Save size={14} />{t.save}</button>
           <button className="sws-publish-button" type="button" onClick={() => void publishDraft()} disabled={saveState === 'saving' || saveState === 'publishing'}><ShieldCheck size={14} />{t.publishAction}</button>

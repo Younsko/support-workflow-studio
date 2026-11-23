@@ -66,6 +66,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .provider-pill.live .status-dot { background: #2a9a66; }
 .icon-button { border: 0; background: transparent; color: #78867d; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; }
 .icon-button:hover { background: #f0f1e8; }
+.language-switch { min-height: 29px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #dfe7df; border-radius: 7px; background: #fffefa; color: #496451; padding: 0 8px; font-size: 9px; font-weight: 700; letter-spacing: .35px; }
+.language-switch:hover { background: #edf3ec; border-color: #cbd9cb; }
+.language-switch svg { color: #78927e; }
 .top-avatar { width: 29px; height: 29px; font-size: 9px; font-weight: 700; }
 .content-wrap { max-width: 1600px; margin: 0 auto; padding: 27px 34px 17px; }
 .page-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 21px; }
