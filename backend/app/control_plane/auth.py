@@ -59,6 +59,7 @@ class OIDCConfig:
 class Principal:
     subject: str
     email: str
+    expires_at: int | None = None
 
 
 @lru_cache(maxsize=4)
@@ -117,7 +118,11 @@ def verify_access_token(
         or claims.get("email_verified") is not True
     ):
         raise AuthenticationError("A verified email and stable subject are required.")
-    return Principal(subject=subject, email=email.strip().casefold())
+    return Principal(
+        subject=subject,
+        email=email.strip().casefold(),
+        expires_at=int(claims["exp"]),
+    )
 
 
 _bearer = HTTPBearer(auto_error=False, scheme_name="OIDC bearer token")

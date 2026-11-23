@@ -723,6 +723,45 @@ class PostgresControlPlaneStore:
             for row in rows
         ]
 
+    def authorize_runner_session(
+        self,
+        workspace_id: str,
+        runner_id: str,
+        subject: str,
+        *,
+        now: datetime | None = None,
+    ) -> str:
+        """Read the role and runner state together before issuing a delegated token."""
+        self._validate_workspace_id(workspace_id)
+        if not _SAFE_WORKSPACE_ID.fullmatch(runner_id):
+            raise WorkspaceNotFound(workspace_id)
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT m.role, r.expires_at, r.revoked_at
+                   FROM cp_memberships AS m
+                   JOIN cp_runners AS r ON r.workspace_id=m.workspace_id
+                   WHERE m.workspace_id=%s AND m.subject=%s AND r.id=%s
+                   FOR SHARE OF m, r""",
+                (workspace_id, subject, runner_id),
+            ).fetchone()
+            if (
+                row is None
+                or row["revoked_at"] is not None
+                or row["expires_at"] <= timestamp
+            ):
+                raise WorkspaceNotFound(workspace_id)
+            self._audit(
+                connection,
+                workspace_id=workspace_id,
+                actor_subject=subject,
+                event_type="runner.session_issued",
+                target_type="runner",
+                target_id=runner_id,
+                now=timestamp,
+            )
+            return row["role"]
+
     def revoke_runner(
         self,
         workspace_id: str,

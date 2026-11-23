@@ -32,6 +32,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .auth import OIDCConfig, Principal, current_principal
+from .session_tokens import (
+    SessionSigningConfig,
+    SessionTokenConfigurationError,
+    SessionTokenInvalid,
+    issue_workspace_session,
+    public_jwks,
+)
 from .store import (
     InvitationInvalid,
     MembershipDenied,
@@ -201,6 +208,14 @@ def create_control_plane_app(
     ) -> Response:
         return Response(content=str(exc), status_code=401, media_type="text/plain")
 
+    @app.exception_handler(SessionTokenConfigurationError)
+    async def session_signing_unavailable(_: Request, __: SessionTokenConfigurationError) -> Response:
+        return Response(
+            content="Workspace session issuance is not configured.",
+            status_code=503,
+            media_type="text/plain",
+        )
+
     @app.get("/health/live")
     def live() -> dict[str, str]:
         return {"status": "live"}
@@ -237,6 +252,18 @@ def create_control_plane_app(
             "audience": oidc.audience,
             "client_id": client_id,
         }
+
+    @app.get("/.well-known/runner-session-jwks.json")
+    def runner_session_jwks(response: Response) -> dict[str, object]:
+        try:
+            keys = public_jwks()
+        except SessionTokenConfigurationError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Workspace session signing keys are not configured.",
+            ) from exc
+        response.headers["Cache-Control"] = "public, max-age=60"
+        return keys
 
     @app.get("/api/v1/me")
     def me(
@@ -389,6 +416,38 @@ def create_control_plane_app(
             expires_at=datetime.now(UTC) + timedelta(days=body.expires_in_days),
         )
         return {**runner, "token": token}
+
+    @app.post("/api/v1/workspaces/{workspace_id}/runners/{runner_id}/session")
+    def create_runner_session(
+        workspace_id: str,
+        runner_id: str,
+        response: Response,
+        principal: Principal = Depends(current_principal),
+        control_store: PostgresControlPlaneStore = Depends(get_control_plane_store),
+    ) -> dict[str, object]:
+        role = control_store.authorize_runner_session(
+            workspace_id, runner_id, principal.subject
+        )
+        try:
+            config = SessionSigningConfig.from_env()
+            token, expires_at = issue_workspace_session(
+                principal,
+                workspace_id=workspace_id,
+                runner_id=runner_id,
+                role=role,
+                config=config,
+            )
+        except SessionTokenInvalid as exc:
+            raise HTTPException(status_code=401, detail="The identity session is invalid.") from exc
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        return {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_at": expires_at,
+            "workspace_id": workspace_id,
+            "runner_id": runner_id,
+        }
 
     @app.get("/api/v1/workspaces/{workspace_id}/runners")
     def list_runners(

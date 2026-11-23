@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from time import time
+
+import pytest
 from app.control_plane.api import create_control_plane_app, get_control_plane_store
 from app.control_plane.auth import Principal, current_principal
 from fastapi.testclient import TestClient
@@ -40,6 +43,65 @@ def test_public_auth_config_contains_only_browser_safe_oidc_values(monkeypatch) 
         "client_id": "public-browser-client",
     }
     assert "jwks" not in response.text.casefold()
+
+
+def test_runner_session_is_workspace_and_runner_bound_and_non_cacheable(monkeypatch) -> None:
+    jwt = pytest.importorskip("jwt")
+    pytest.importorskip("cryptography.hazmat.primitives.serialization")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import NoEncryption
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=NoEncryption(),
+    ).decode("utf-8")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_ISSUER", "https://control.example.test")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_KEY_ID", "test-key-1")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_SIGNING_PRIVATE_KEY_PEM", private_pem)
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_PREVIOUS_PUBLIC_KEYS_JSON", "[]")
+
+    expires_at = int(time()) + 600
+    app = create_control_plane_app()
+    app.dependency_overrides[current_principal] = lambda: Principal(
+        subject="oidc|approver", email="approver@example.test", expires_at=expires_at
+    )
+
+    class StoreStub:
+        def authorize_runner_session(self, workspace_id, runner_id, subject):
+            assert workspace_id == "b" * 32
+            assert runner_id == "a" * 32
+            assert subject == "oidc|approver"
+            return "Approver"
+
+    app.dependency_overrides[get_control_plane_store] = lambda: StoreStub()
+    response = TestClient(app).post(
+        f"/api/v1/workspaces/{'b' * 32}/runners/{'a' * 32}/session",
+        json={"role": "Owner", "workspace_id": "c" * 32},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    access_token = response.json()["access_token"]
+    claims = jwt.decode(
+        access_token,
+        private_key.public_key(),
+        algorithms=["RS256"],
+        issuer="https://control.example.test",
+        audience="a" * 32,
+    )
+    assert claims["sub"] == "oidc|approver"
+    assert claims["workspace_id"] == "b" * 32
+    assert claims["runner_id"] == "a" * 32
+    assert claims["role"] == "Approver"
+    assert 0 < claims["exp"] - claims["iat"] <= 180
+    assert response.json()["expires_at"] == claims["exp"]
+    assert "private" not in TestClient(app).get(
+        "/.well-known/runner-session-jwks.json"
+    ).text.casefold()
 
 
 def test_audit_limit_is_rejected_at_the_http_boundary() -> None:

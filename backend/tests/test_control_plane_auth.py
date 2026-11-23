@@ -47,7 +47,9 @@ def test_oidc_verifier_accepts_signed_token_with_exact_issuer_audience_and_verif
     principal = verify_access_token(token, config, jwks_client=resolver)
 
     assert principal == Principal(
-        subject="provider|user-123", email="reviewer@example.test"
+        subject="provider|user-123",
+        email="reviewer@example.test",
+        expires_at=signing_material[2]["exp"],
     )
 
 

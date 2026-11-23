@@ -342,6 +342,49 @@ def test_runner_expiry_migration_backfills_existing_v2_rows(store, owner) -> Non
     assert listed[0]["expires_at"] == (created_at + timedelta(days=90)).isoformat()
 
 
+def test_runner_session_uses_current_workspace_role_and_rejects_revoked_runner(
+    store, owner
+) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    now = datetime.now(UTC)
+    viewer = Principal(subject="oidc|viewer", email="viewer@example.test")
+    invitation_token = secrets.token_urlsafe(32)
+    invitation = store.create_invitation(
+        workspace_id,
+        owner,
+        email=viewer.email,
+        role="Viewer",
+        token=invitation_token,
+        expires_at=now + timedelta(hours=1),
+        now=now,
+    )
+    store.redeem_invitation(str(invitation["id"]), invitation_token, viewer, now=now)
+    runner_token = secrets.token_urlsafe(32)
+    runner = store.create_runner_enrollment(
+        workspace_id,
+        owner,
+        name="Workspace runner",
+        token=runner_token,
+        expires_at=now + timedelta(days=1),
+        now=now,
+    )
+    runner_id = str(runner["id"])
+
+    assert store.authorize_runner_session(
+        workspace_id, runner_id, viewer.subject, now=now + timedelta(seconds=1)
+    ) == "Viewer"
+    assert (
+        store.list_audit_events(workspace_id, owner.subject)[0]["event_type"]
+        == "runner.session_issued"
+    )
+    store.revoke_runner(workspace_id, runner_id, owner, now=now + timedelta(seconds=2))
+    with pytest.raises(WorkspaceNotFound):
+        store.authorize_runner_session(
+            workspace_id, runner_id, viewer.subject, now=now + timedelta(seconds=3)
+        )
+
+
 def test_control_plane_database_target_comparison_ignores_credentials() -> None:
     pytest.importorskip("psycopg")
 
