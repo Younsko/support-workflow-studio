@@ -21,7 +21,11 @@ type WorkflowBundle = {
   published: { definition: Omit<WorkflowDefinition, 'status'> & { status: 'published' }; published_at: string; content_hash: string }[]
 }
 
-type Props = { locale?: WorkflowBuilderLocale }
+type Props = { locale?: WorkflowBuilderLocale; onOpenConnections?: () => void; connectionsRevision?: number }
+type ConnectionBindings = {
+  jiraReady: boolean; knowledgeReady: boolean; knowledgeMode: string
+  modelReady: boolean; provider: string; model: string; modelRef: string
+}
 
 const copy = {
   en: {
@@ -37,8 +41,8 @@ const copy = {
     unsupportedGraph: 'This version has branches or nodes this editor cannot preserve. It is read-only here; saving is blocked to prevent data loss.',
     concurrentDraft: 'A draft was created in another tab. Reload the workflow before saving to avoid overwriting those changes.',
     validate: 'Validate flow', add: 'Add step', close: 'Close', remove: 'Remove step', output: 'Output',
-    ticket: 'Ticket received', ticketSub: 'Jira Service Management · new request', triage: 'Normalize & triage', triageSub: 'Classify, prioritize, route',
-    knowledge: 'Search knowledge', knowledgeSub: 'Approved sources · Confluence', agent: 'Draft response', agentSub: 'Support agent · BYOK model',
+    ticket: 'Ticket received', ticketSub: 'New request · source connector', triage: 'Normalize & triage', triageSub: 'Classify, prioritize, route',
+    knowledge: 'Search knowledge', knowledgeSub: 'Approved local support sources', agent: 'Draft response', agentSub: 'Support agent · BYOK model',
     verify: 'Independent check', verifySub: 'Evidence, policy & completeness', approval: 'Human approval', approvalSub: 'Review draft before release',
     publish: 'Publish response', publishSub: 'Send reply to source ticket',
     nodeTypes: ['Ticket trigger', 'Normalize & triage', 'Knowledge search', 'AI agent', 'Independent verifier', 'Human approval', 'Publish reply'],
@@ -46,6 +50,9 @@ const copy = {
     invalid: 'Check the flow before using it.', triggerMissing: 'Add a ticket trigger.', approvalMissing: 'Put a human approval step before publishing.', disconnected: 'Every step must be connected to the flow.',
     removeConfirm: 'Remove this step?', noTools: 'Tool permissions are saved with the draft; runner execution is not connected.', modelLocal: 'Choose a model when a runner is connected',
     stepCount: 'steps', runTab: 'Runs', workflowTab: 'Workflow', connections: 'Connections', status: 'Not published',
+    configure: 'Configure', jiraConnected: 'Jira configured', jiraMissing: 'Jira setup needed',
+    knowledgeConnected: 'Knowledge ready', knowledgeDemo: 'Demo knowledge', knowledgeMissing: 'Knowledge setup needed',
+    modelConfigured: 'Settings saved · connection not tested', modelDemo: 'Synthetic demo', modelMissing: 'Model setup needed',
   },
   fr: {
     eyebrow: 'STUDIO DE WORKFLOWS', title: 'Entrée du support', crumb: 'Workflows', draft: 'Brouillon · local',
@@ -60,8 +67,8 @@ const copy = {
     unsupportedGraph: 'Cette version contient des branches ou des étapes que cet éditeur ne sait pas préserver. Elle est en lecture seule ici; l’enregistrement est bloqué.',
     concurrentDraft: 'Un brouillon a été créé dans un autre onglet. Rechargez le workflow avant d’enregistrer pour éviter d’écraser ses modifications.',
     validate: 'Valider le flux', add: 'Ajouter', close: 'Fermer', remove: 'Supprimer l’étape', output: 'Résultat',
-    ticket: 'Ticket reçu', ticketSub: 'Jira Service Management · nouvelle demande', triage: 'Normalisation et triage', triageSub: 'Catégoriser, prioriser, router',
-    knowledge: 'Recherche documentaire', knowledgeSub: 'Sources approuvées · Confluence', agent: 'Rédiger une réponse', agentSub: 'Agent support · modèle BYOK',
+    ticket: 'Ticket reçu', ticketSub: 'Nouvelle demande · connecteur ITSM', triage: 'Normalisation et triage', triageSub: 'Catégoriser, prioriser, router',
+    knowledge: 'Recherche documentaire', knowledgeSub: 'Sources locales de support approuvées', agent: 'Rédiger une réponse', agentSub: 'Agent support · modèle BYOK',
     verify: 'Vérification indépendante', verifySub: 'Preuves, règles et complétude', approval: 'Validation humaine', approvalSub: 'Relire le brouillon avant envoi',
     publish: 'Publier la réponse', publishSub: 'Répondre sur le ticket source',
     nodeTypes: ['Déclencheur ticket', 'Normalisation et triage', 'Recherche documentaire', 'Agent IA', 'Vérificateur indépendant', 'Validation humaine', 'Publier la réponse'],
@@ -69,6 +76,9 @@ const copy = {
     invalid: 'Corrigez le flux avant de l’utiliser.', triggerMissing: 'Ajoutez un déclencheur de ticket.', approvalMissing: 'Placez une validation humaine avant la publication.', disconnected: 'Toutes les étapes doivent être reliées au flux.',
     removeConfirm: 'Supprimer cette étape ?', noTools: 'Les droits d’outils sont enregistrés avec le brouillon; le runner n’est pas connecté.', modelLocal: 'Choisissez un modèle lorsqu’un runner sera connecté',
     stepCount: 'étapes', runTab: 'Exécutions', workflowTab: 'Workflow', connections: 'Connexions', status: 'Non publié',
+    configure: 'Configurer', jiraConnected: 'Jira configuré', jiraMissing: 'Jira à configurer',
+    knowledgeConnected: 'Documentation prête', knowledgeDemo: 'Documentation démo', knowledgeMissing: 'Documentation à configurer',
+    modelConfigured: 'Paramètres enregistrés · connexion non testée', modelDemo: 'Démo synthétique', modelMissing: 'Modèle à configurer',
   },
 } as const
 
@@ -109,18 +119,22 @@ function isEditableLinear(definition: Pick<WorkflowDefinition, 'nodes' | 'connec
   )
 }
 
-function toDefinition(nodes: FlowNode[], version: number): WorkflowDefinition {
+function toDefinition(nodes: FlowNode[], version: number, bindings: ConnectionBindings | null): WorkflowDefinition {
   const definitionNodes: DefinitionNode[] = nodes.map((node) => {
     let config: Record<string, unknown> = {}
-    if (node.kind === 'trigger') config = { connection_ref: 'unconfigured-jsm-connection' }
-    if (node.kind === 'knowledge') config = { source_ref: 'unconfigured-knowledge-source' }
-    if (node.kind === 'agent') config = {
-      role: node.role || '', instructions: node.subtitle || 'Draft a response grounded in approved sources.',
-      model_ref: node.modelRef || 'unconfigured-model', provider: node.provider || '',
-      allowed_tools: node.allowedTools ?? [],
+    if (node.kind === 'trigger') config = { connection_ref: bindings?.jiraReady ? 'jira-service-management' : 'unconfigured-jsm-connection' }
+    if (node.kind === 'knowledge') config = { source_ref: bindings?.knowledgeReady ? bindings.knowledgeMode === 'local' ? 'local-approved-knowledge' : 'demo-knowledge' : 'unconfigured-knowledge-source' }
+    if (node.kind === 'agent') {
+      const selectedProviderMatches = !node.provider || node.provider === bindings?.provider
+      config = {
+        role: node.role || '', instructions: node.subtitle || 'Draft a response grounded in approved sources.',
+        model_ref: bindings?.modelReady && selectedProviderMatches ? bindings.modelRef : 'unconfigured-model',
+        provider: selectedProviderMatches ? node.provider || bindings?.provider || '' : node.provider || '',
+        allowed_tools: node.allowedTools ?? [],
+      }
     }
     if (node.kind === 'approval') config = { required_role: 'Approver' }
-    if (node.kind === 'publish') config = { connection_ref: 'unconfigured-jsm-connection', operation: 'public_reply' }
+    if (node.kind === 'publish') config = { connection_ref: bindings?.jiraReady ? 'jira-service-management' : 'unconfigured-jsm-connection', operation: 'public_reply' }
     return { id: node.id, type: node.definitionType ?? nodeTypeByKind[node.kind], name: node.title, config }
   })
   return {
@@ -151,7 +165,7 @@ function fromDefinition(definition: Pick<WorkflowDefinition, 'nodes'>): FlowNode
   })
 }
 
-export default function WorkflowBuilder({ locale: initialLocale = 'en' }: Props) {
+export default function WorkflowBuilder({ locale: initialLocale = 'en', onOpenConnections, connectionsRevision = 0 }: Props) {
   const [locale, setLocale] = useState<WorkflowBuilderLocale>(initialLocale)
   const t = copy[locale]
   const [nodes, setNodes] = useState<FlowNode[]>(() => makeStarter(t))
@@ -168,7 +182,44 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en' }: Props)
   const [unsupportedGraph, setUnsupportedGraph] = useState(false)
   const [saveState, setSaveState] = useState<'local' | 'saved' | 'saving' | 'publishing' | 'error'>('local')
   const [saveMessage, setSaveMessage] = useState('')
+  const [bindings, setBindings] = useState<ConnectionBindings | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadBindings() {
+      try {
+        const [integrationResponse, healthResponse, setupResponse] = await Promise.all([
+          fetch('/api/integrations/status'), fetch('/api/health'), fetch('/api/setup'),
+        ])
+        if (!integrationResponse.ok || !healthResponse.ok || !setupResponse.ok) throw new Error('Setup state is unavailable.')
+        const [integrations, health, setup] = await Promise.all([
+          integrationResponse.json(), healthResponse.json(), setupResponse.json(),
+        ]) as [
+          { jira_configured?: boolean; knowledge?: { available?: boolean; mode?: string }; external_ticket_inference_allowed?: boolean },
+          { provider_mode?: string; provider?: string; model?: string; credentials_configured?: boolean },
+          { external_model_disclosure_accepted?: boolean },
+        ]
+        const provider = health.provider || 'demo'
+        const model = health.model || 'Synthetic workflow model'
+        const externalConsent = integrations.external_ticket_inference_allowed ?? setup.external_model_disclosure_accepted ?? false
+        const modelReady = provider === 'demo' || Boolean(health.credentials_configured && (provider === 'ollama-local' || externalConsent))
+        if (!cancelled) setBindings({
+          jiraReady: Boolean(integrations.jira_configured),
+          knowledgeReady: Boolean(integrations.knowledge?.available),
+          knowledgeMode: integrations.knowledge?.mode || 'synthetic',
+          modelReady,
+          provider,
+          model,
+          modelRef: modelReady ? `${provider}:${model}` : 'unconfigured-model',
+        })
+      } catch {
+        if (!cancelled) setBindings({ jiraReady: false, knowledgeReady: false, knowledgeMode: 'local', modelReady: false, provider: '', model: '', modelRef: 'unconfigured-model' })
+      }
+    }
+    void loadBindings()
+    return () => { cancelled = true }
+  }, [connectionsRevision])
 
   useEffect(() => {
     let cancelled = false
@@ -243,7 +294,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en' }: Props)
       try {
         const response = await fetch(`/api/v1/workflows/${workflowId}/validate`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(toDefinition(nodes, workflowVersion)),
+          body: JSON.stringify(toDefinition(nodes, workflowVersion, bindings)),
         })
         if (response.ok) {
           const result = await response.json() as { valid: boolean; issues: { message: string }[] }
@@ -304,12 +355,12 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en' }: Props)
   }
 
   async function saveDraft() {
-    const result = await saveDefinition(toDefinition(nodes, workflowVersion))
+    const result = await saveDefinition(toDefinition(nodes, workflowVersion, bindings))
     if (result) setWorkflowVersion(result.definition.version)
   }
 
   async function publishDraft() {
-    const persisted = await saveDefinition(toDefinition(nodes, workflowVersion))
+    const persisted = await saveDefinition(toDefinition(nodes, workflowVersion, bindings))
     if (!persisted) return
     setSaveState('publishing')
     try {
@@ -406,10 +457,18 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en' }: Props)
 
       <section className="sws-heading">
         <div><p className="sws-eyebrow">{t.eyebrow}</p><h1>{t.title}</h1><p>{t.subtitle}</p></div>
-        <div className="sws-tabs" role="tablist" aria-label={t.title}>
-          <button className="active" type="button" role="tab" aria-selected="true"><Waypoints size={14} />{t.workflowTab}</button>
-          <button type="button" role="tab" aria-selected="false" disabled title={t.localNotice}><Clock3 size={14} />{t.runTab}</button>
-          <button type="button" role="tab" aria-selected="false" disabled title={t.localNotice}><Settings2 size={14} />{t.connections}</button>
+        <div className="sws-heading-actions">
+          <div className="sws-tabs" role="tablist" aria-label={t.title}>
+            <button className="active" type="button" role="tab" aria-selected="true"><Waypoints size={14} />{t.workflowTab}</button>
+            <button type="button" role="tab" aria-selected="false" disabled title={t.localNotice}><Clock3 size={14} />{t.runTab}</button>
+            <button type="button" role="tab" aria-selected="false" onClick={onOpenConnections}><Settings2 size={14} />{t.connections}</button>
+          </div>
+          <div className="sws-connection-status" role="status">
+            <span className={bindings?.jiraReady ? 'ready' : ''}><i />{bindings?.jiraReady ? t.jiraConnected : t.jiraMissing}</span>
+            <span className={bindings?.knowledgeReady ? 'ready' : ''}><i />{bindings?.knowledgeReady ? bindings.knowledgeMode === 'local' ? t.knowledgeConnected : t.knowledgeDemo : t.knowledgeMissing}</span>
+            <span className={bindings?.modelReady ? 'ready' : ''}><i />{bindings?.modelReady ? bindings.provider === 'demo' ? t.modelDemo : `${t.modelConfigured} · ${bindings.provider}` : t.modelMissing}</span>
+            <button type="button" onClick={onOpenConnections}>{t.configure}</button>
+          </div>
         </div>
       </section>
 
@@ -473,7 +532,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en' }: Props)
             <label>{t.description}<textarea value={selected.subtitle} onChange={(event) => updateSelected('subtitle', event.target.value)} rows={3} maxLength={240} /></label>
             {selected.kind === 'agent' && <>
               <label>{t.role}<input value={selected.role ?? ''} onChange={(event) => updateSelected('role', event.target.value)} maxLength={80} /></label>
-              <label>{t.model}<select value={selected.provider ?? ''} onChange={(event) => updateSelected('provider', event.target.value)}><option value="">{t.modelLocal}</option><option value="ollama-local">Ollama · runner</option><option value="openai-compatible">OpenAI-compatible · BYOK</option><option value="anthropic">Anthropic · BYOK</option></select></label>
+              <label>{t.model}<select value={selected.provider || bindings?.provider || ''} onChange={(event) => updateSelected('provider', event.target.value)}><option value="">{t.modelLocal}</option>{bindings?.provider && <option value={bindings.provider}>{bindings.provider} · {bindings.model}</option>}<option value="ollama-local">Ollama · local</option><option value="openai-compatible">OpenAI-compatible · BYOK</option><option value="anthropic">Anthropic · BYOK</option></select></label>
               <div className="sws-tool-list"><span>{t.tools}</span><label><input type="checkbox" checked={(selected.allowedTools ?? []).includes('knowledge.search')} onChange={() => toggleSelectedTool('knowledge.search')} />{t.toolKnowledge}</label><label><input type="checkbox" checked={(selected.allowedTools ?? []).includes('ticket.read')} onChange={() => toggleSelectedTool('ticket.read')} />{t.toolTicket}</label></div>
               <div className="sws-inspector-callout"><Bot size={15} /><span>{t.noTools}</span></div>
             </>}

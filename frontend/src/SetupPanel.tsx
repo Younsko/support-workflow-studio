@@ -32,6 +32,13 @@ const emptySetup: SetupValues = {
   external_model_disclosure_accepted: false, private_local_mode: false,
 }
 
+function modelKeyTarget(provider: string, baseUrl: string) {
+  const destination = provider === 'anthropic'
+    ? 'https://api.anthropic.com/v1/messages'
+    : baseUrl.trim().replace(/\/+$/, '')
+  return `${provider}\0${destination}`
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } })
   if (!response.ok) {
@@ -43,6 +50,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [values, setValues] = useState<SetupValues>(emptySetup)
+  const [savedModelTarget, setSavedModelTarget] = useState('')
   const [token, setToken] = useState('')
   const [modelKey, setModelKey] = useState('')
   const [clearModelKey, setClearModelKey] = useState(false)
@@ -58,7 +66,10 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
 
   useEffect(() => {
     request<SetupValues>('/setup')
-      .then(setValues)
+      .then((loaded) => {
+        setValues(loaded)
+        setSavedModelTarget(modelKeyTarget(loaded.model_provider, loaded.model_base_url))
+      })
       .catch((reason: Error) => setError(reason.message))
       .finally(() => setLoading(false))
   }, [])
@@ -129,6 +140,7 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
         jira_token_configured: current.jira_token_configured || Boolean(token),
         model_api_key_configured: clearModelKey ? false : current.model_api_key_configured || Boolean(modelKey),
       }))
+      setSavedModelTarget(modelKeyTarget(outcome.model_provider, values.model_base_url))
       setToken('')
       setModelKey('')
       setClearModelKey(false)
@@ -147,6 +159,7 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
     if (key === 'poll_interval_seconds' || key === 'max_auto_triage_per_poll') update(key, Number(raw) as never)
     else update(key, raw as never)
   }
+  const savedKeyMatchesTarget = savedModelTarget === modelKeyTarget(values.model_provider, values.model_base_url)
 
   return (
     <div className="modal-backdrop setup-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
@@ -179,16 +192,16 @@ export default function SetupPanel({ onClose, onSaved }: { onClose: () => void; 
               <div className="setup-notice subtle-notice"><CircleAlert size={15} /> Rules are advisory classification. They do not trigger remediation or skip human review.</div>
             </section>
             <section className="setup-card"><div className="setup-card-title"><span>04</span><div><h3>Model provider</h3><p>Choose a local model or bring a provider key. Saving settings does not call the model.</p></div></div>
-              <label>Provider<select value={values.model_provider} onChange={(event) => { update('model_provider', event.target.value); setResult('') }}>
+              <label>Provider<select value={values.model_provider} onChange={(event) => { update('model_provider', event.target.value); update('external_model_disclosure_accepted', false); setModelKey(''); setResult('') }}>
                 <option value="demo">Demo · synthetic responses</option>
                 <option value="openai-compatible" disabled={values.private_local_mode}>OpenAI-compatible API · includes Groq</option>
                 <option value="anthropic" disabled={values.private_local_mode}>Anthropic API</option>
                 <option value="ollama-local">Ollama · this machine</option>
               </select></label>
               <label>Model name<input value={values.model_name} onChange={setField('model_name')} placeholder={values.model_provider === 'demo' ? 'Synthetic workflow model' : 'Provider model identifier'} /></label>
-              {(values.model_provider === 'openai-compatible' || values.model_provider === 'ollama-local') && <label>API base URL<input value={values.model_base_url} onChange={setField('model_base_url')} placeholder={values.model_provider === 'ollama-local' ? 'http://127.0.0.1:11434' : 'https://api.groq.com/openai/v1'} /></label>}
+              {(values.model_provider === 'openai-compatible' || values.model_provider === 'ollama-local') && <label>API base URL<input value={values.model_base_url} onChange={(event) => { if (event.target.value !== values.model_base_url) { update('external_model_disclosure_accepted', false); setModelKey('') } setField('model_base_url')(event) }} placeholder={values.model_provider === 'ollama-local' ? 'http://127.0.0.1:11434' : 'https://api.groq.com/openai/v1'} /></label>}
               {(values.model_provider === 'openai-compatible' || values.model_provider === 'anthropic') && <>
-                <label>Model API key<input type="password" value={modelKey} onChange={(event) => { setModelKey(event.target.value); setClearModelKey(false); setResult('') }} placeholder={values.model_api_key_configured ? 'Saved locally — leave blank to keep' : 'Paste provider API key'} autoComplete="new-password" /></label>
+                <label>Model API key<input type="password" value={modelKey} onChange={(event) => { setModelKey(event.target.value); setClearModelKey(false); setResult('') }} placeholder={values.model_api_key_configured && savedKeyMatchesTarget ? 'Saved locally — leave blank to keep' : 'Enter a key for this provider and endpoint'} autoComplete="new-password" /></label>
                 {values.model_api_key_configured && <>
                   <label className="setup-checkbox"><input type="checkbox" checked={clearModelKey} disabled={values.model_provider === 'openai-compatible' || values.model_provider === 'anthropic'} onChange={(event) => { setClearModelKey(event.target.checked); setModelKey('') }} /> Remove saved model API key</label>
                   {(values.model_provider === 'openai-compatible' || values.model_provider === 'anthropic') && <small className="setup-help">Switch to Demo or Ollama before removing the key used by the selected API provider.</small>}

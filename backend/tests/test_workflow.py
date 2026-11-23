@@ -903,6 +903,72 @@ def test_external_model_setup_requires_explicit_disclosure_consent(monkeypatch) 
     assert persisted == []
 
 
+def test_model_setup_never_reuses_saved_key_for_a_different_provider(monkeypatch) -> None:
+    from app import main
+
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("MODEL_API_KEY", "key-for-groq")
+    monkeypatch.setenv(
+        "MODEL_API_KEY_SCOPE",
+        main._model_destination_scope("openai-compatible", "https://api.groq.com/openai/v1"),
+    )
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    monkeypatch.setenv(
+        "MODEL_CONSENT_SCOPE",
+        main._model_destination_scope("openai-compatible", "https://api.groq.com/openai/v1"),
+    )
+    persisted = []
+    monkeypatch.setattr(main, "_persist_local_setup", lambda *args, **kwargs: persisted.append(args))
+
+    response = client.put(
+        "/api/setup",
+        json={
+            "model_provider": "anthropic",
+            "model_name": "synthetic-model",
+            "external_model_disclosure_accepted": True,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "API key" in response.json()["detail"]
+    assert "key-for-groq" not in response.text
+    assert persisted == []
+
+
+def test_model_setup_requires_fresh_disclosure_for_changed_endpoint(monkeypatch) -> None:
+    from app import main
+
+    original_scope = main._model_destination_scope(
+        "openai-compatible", "https://api.groq.com/openai/v1"
+    )
+    monkeypatch.setenv("MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MODEL_NAME", "synthetic-model")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("MODEL_API_KEY", "key-for-groq")
+    monkeypatch.setenv("MODEL_API_KEY_SCOPE", original_scope)
+    monkeypatch.setenv("MODEL_CONSENT_SCOPE", original_scope)
+    monkeypatch.setenv("ALLOW_EXTERNAL_TICKET_INFERENCE", "true")
+    persisted = []
+    monkeypatch.setattr(main, "_persist_local_setup", lambda *args, **kwargs: persisted.append(args))
+
+    response = client.put(
+        "/api/setup",
+        json={
+            "model_provider": "openai-compatible",
+            "model_name": "synthetic-model",
+            "model_base_url": "https://api.openai.com/v1",
+            "model_api_key": "key-for-new-destination",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Confirm" in response.json()["detail"]
+    assert "key-for-new-destination" not in response.text
+    assert persisted == []
+
+
 def test_ollama_setup_rejects_non_loopback_endpoint(monkeypatch) -> None:
     from app import main
 

@@ -39,6 +39,12 @@
 .sws-heading h1 { color: #1c382b; font: 500 27px/1.05 'Newsreader', Georgia, serif; letter-spacing: -.35px; margin: 0 0 7px; }
 .sws-heading p:last-child { color: var(--sws-muted); font-size: 11px; margin: 0; }
 .sws-tabs { gap: 4px; border: 1px solid #e5e9e5; border-radius: 8px; padding: 3px; background: #edf1ee; }
+.sws-heading-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.sws-connection-status { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: #828d86; font-size: 9px; }
+.sws-connection-status span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sws-connection-status i { width: 6px; height: 6px; border-radius: 50%; background: #bd8c51; }
+.sws-connection-status .ready i { background: #5b8c66; }
+.sws-connection-status button { border: 0; background: transparent; color: #54735d; cursor: pointer; font: inherit; font-weight: 700; padding: 0; }
 .sws-tabs button { min-height: 30px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; background: transparent; color: #7e8b84; padding: 0 10px; font-size: 10px; }
 .sws-tabs button.active { color: #254737; background: #fff; box-shadow: 0 1px 3px #132b1e12; font-weight: 650; }
 .sws-tabs button:disabled { opacity: .5; }
@@ -154,6 +160,8 @@
   .sws-topbar { padding: 0 14px; }
   .sws-draft-pill { display: none; }
   .sws-heading { align-items: flex-start; flex-direction: column; padding: 20px 15px 14px; }
+  .sws-heading-actions { align-items: flex-start; width: 100%; }
+  .sws-connection-status { justify-content: flex-start; flex-wrap: wrap; row-gap: 7px; }
   .sws-editor-shell { grid-template-columns: 1fr; margin: 0 8px 12px; }
   .sws-palette { border-right: 0; border-bottom: 1px solid var(--sws-line); }
   .sws-library-list { grid-template-columns: repeat(2, minmax(0,1fr)); }

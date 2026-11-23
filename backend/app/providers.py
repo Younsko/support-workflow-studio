@@ -309,6 +309,7 @@ async def generate(
         async with httpx.AsyncClient(
             timeout=config.timeout,
             trust_env=config.provider != "ollama-local",
+            follow_redirects=False,
         ) as client:
             if config.provider == "ollama-local":
                 model_list = await client.get(f"{config.base_url.rstrip('/')}/api/tags")

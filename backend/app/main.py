@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import os
 import shutil
@@ -126,6 +127,7 @@ def _persist_local_setup(
             set_key(str(staged_path), "MODEL_API_KEY", model_api_key, quote_mode="always")
         elif remove_model_api_key:
             unset_key(str(staged_path), "MODEL_API_KEY")
+            unset_key(str(staged_path), "MODEL_API_KEY_SCOPE")
         if os.name != "nt":
             staged_path.chmod(0o600)
         os.replace(staged_path, env_path)
@@ -142,6 +144,7 @@ def _persist_local_setup(
         os.environ["MODEL_API_KEY"] = model_api_key
     elif remove_model_api_key:
         os.environ.pop("MODEL_API_KEY", None)
+        os.environ.pop("MODEL_API_KEY_SCOPE", None)
 
 
 def _save_case(case: CaseRecord) -> None:
@@ -156,6 +159,14 @@ def _save_run(run: WorkflowResult) -> None:
 
 def _enabled_env(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _model_destination_scope(provider: str, base_url: str) -> str:
+    """Stable, non-secret binding for a model key and data disclosure decision."""
+    destination = base_url.strip().rstrip("/")
+    if provider == "anthropic":
+        destination = "https://api.anthropic.com/v1/messages"
+    return hashlib.sha256(f"{provider}\0{destination}".encode("utf-8")).hexdigest()
 
 
 def _private_local_mode_enabled() -> bool:
@@ -621,10 +632,22 @@ def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str,
         else current.base_url
     ).strip().rstrip("/")
     api_key = settings.model_api_key.strip()
+    target_scope = _model_destination_scope(provider, base_url)
+    current_scope = _model_destination_scope(current.provider, current.base_url)
+    saved_key = os.getenv("MODEL_API_KEY", "").strip()
+    saved_key_scope = os.getenv("MODEL_API_KEY_SCOPE", "").strip()
+    if saved_key and not saved_key_scope:
+        # Migrate a legacy local key by binding it to its currently configured destination.
+        saved_key_scope = current_scope
+    saved_consent_scope = os.getenv("MODEL_CONSENT_SCOPE", "").strip() or current_scope
+    previously_consented_here = (
+        current.external_ticket_inference_allowed
+        and saved_consent_scope == target_scope
+    )
     consent = (
         settings.external_model_disclosure_accepted
         if settings.external_model_disclosure_accepted is not None
-        else current.external_ticket_inference_allowed
+        else previously_consented_here
     )
     model_fields_submitted = any(
         value is not None
@@ -646,7 +669,17 @@ def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str,
     if settings.clear_model_api_key and api_key:
         raise HTTPException(status_code=422, detail="Choose either a replacement model key or remove the saved key.")
 
-    effective_key = "" if settings.clear_model_api_key else api_key or current.api_key
+    if settings.clear_model_api_key:
+        effective_key = ""
+    elif api_key:
+        effective_key = api_key
+    elif saved_key and target_scope == saved_key_scope:
+        effective_key = saved_key
+    elif not saved_key and target_scope == current_scope and current.api_key:
+        # Supports an operator-provided GROQ_API_KEY at its matching endpoint only.
+        effective_key = current.api_key
+    else:
+        effective_key = ""
     if provider in {"openai-compatible", "anthropic"}:
         if not effective_key:
             raise HTTPException(status_code=422, detail="Enter a model API key before selecting this provider.")
@@ -715,7 +748,10 @@ def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str,
         "MODEL_NAME": model_name or "Synthetic workflow model",
         "MODEL_BASE_URL": base_url,
         "ALLOW_EXTERNAL_TICKET_INFERENCE": str(bool(consent)).lower(),
+        "MODEL_CONSENT_SCOPE": target_scope,
     }
+    if api_key or (saved_key and target_scope == saved_key_scope and not settings.clear_model_api_key):
+        values["MODEL_API_KEY_SCOPE"] = target_scope
     return values, api_key, settings.clear_model_api_key
 
 

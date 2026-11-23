@@ -74,6 +74,7 @@ export default function App() {
   const [draft, setDraft] = useState('')
   const [showIntake, setShowIntake] = useState(false)
   const [showSetup, setShowSetup] = useState(false)
+  const [setupRevision, setSetupRevision] = useState(0)
   const [intake, setIntake] = useState({ title: '', requester: '', body: '', impact: 'Unknown impact' })
   const [decisionBusy, setDecisionBusy] = useState(false)
   const selected = cases.find((item) => item.id === selectedId)
@@ -184,6 +185,7 @@ export default function App() {
       const casesNow = state.jira_configured ? await api<SupportCase[]>('/itsm/sync', { method: 'POST' }) : await api<SupportCase[]>('/cases')
       setIntegrations(state)
       setHealth(modelState)
+      setSetupRevision((revision) => revision + 1)
       setCases((current) => state.jira_configured
         ? [...current.filter((item) => item.source !== 'jira-service-management'), ...casesNow]
         : casesNow)
@@ -248,7 +250,7 @@ export default function App() {
           <div className="topbar-right">{integrations?.private_local_mode && <span className="provider-pill live"><span className="status-dot" />PRIVATE LOCAL MODE</span>}<span className={`provider-pill ${health?.provider_mode === 'live' ? 'live' : ''}`}><span className="status-dot" />{health?.provider_mode === 'live' ? `${health.provider} · ${health.model}` : 'Demo mode'}</span>{integrations?.jira_configured && <><span className={`provider-pill ${integrations.jira_monitor.enabled ? 'live' : ''}`}><span className="status-dot" />{integrations.jira_monitor.enabled ? `Jira monitor · ${integrations.jira_monitor.auto_triage_enabled ? 'auto-triage on' : 'review to triage'}` : 'Jira monitor starting'}</span><span className={`provider-pill ${integrations.knowledge.configured && integrations.knowledge.available ? 'live' : ''}`}><span className="status-dot" />{integrations.knowledge.configured && integrations.knowledge.available ? `${integrations.knowledge.source_count} local KB sources` : 'Knowledge setup required'}</span></>}<button className="icon-button" title="Help"><CircleHelp size={18} /></button><div className="top-avatar">SR</div></div>
         </header>
 
-        {activeSection === 'workflow' && <div id="workflow-studio" className="workflow-studio-page"><WorkflowBuilder /></div>}
+        {activeSection === 'workflow' && <div id="workflow-studio" className="workflow-studio-page"><WorkflowBuilder onOpenConnections={() => setShowSetup(true)} connectionsRevision={setupRevision} /></div>}
 
         <div className="content-wrap" style={activeSection === 'workflow' ? { display: 'none' } : undefined}>
           <section className="page-heading">
