@@ -8,7 +8,7 @@ import pytest
 from app import main
 from app.fixtures import demo_cases
 from app.schemas import WorkflowResult
-from app.store import LocalStore
+from app.store import LocalStore, WorkflowStateStore
 from fastapi.testclient import TestClient
 
 
@@ -486,3 +486,9 @@ def test_local_store_readiness_probe_checks_database_connection(tmp_path, monkey
     monkeypatch.setattr(store, "_connect", unavailable)
     with pytest.raises(sqlite3.OperationalError, match="storage unavailable"):
         store.check_ready()
+
+
+def test_sqlite_implementation_satisfies_workflow_state_store_contract(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+
+    assert isinstance(store, WorkflowStateStore)
