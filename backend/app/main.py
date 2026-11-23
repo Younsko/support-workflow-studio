@@ -195,7 +195,7 @@ def _restore_monitor_checkpoint(state: dict[str, object]) -> None:
     attempts = state.get("pending_attempts")
     if isinstance(attempts, dict):
         for case_id, count in attempts.items():
-            if isinstance(case_id, str) and isinstance(count, int) and 0 <= count < 3:
+            if isinstance(case_id, str) and isinstance(count, int) and 0 <= count <= 3:
                 JIRA_PENDING_TRIAGE_ATTEMPTS[case_id] = count
     tags = state.get("local_tags")
     if isinstance(tags, dict):
@@ -452,7 +452,23 @@ async def _poll_jira_once() -> None:
             if any(run.case_id == case.id for run in RUNS.values()):
                 JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
                 _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                _save_monitor_checkpoint()
                 continue
+            attempts = JIRA_PENDING_TRIAGE_ATTEMPTS.get(case.id, 0)
+            if attempts >= 3:
+                JIRA_MONITOR_STATE["last_error"] = (
+                    "Auto-triage stopped after three interrupted or failed attempts."
+                )
+                JIRA_PENDING_TRIAGE_ATTEMPTS.pop(case.id, None)
+                _tag_local_case(case.id, "studio-triage-retry-pending", False)
+                _tag_local_case(case.id, "studio-triage-failed", True)
+                _save_monitor_checkpoint()
+                continue
+            # Reserve the attempt before any provider work. A process restart during
+            # generation therefore cannot silently grant an unbounded retry.
+            attempts += 1
+            JIRA_PENDING_TRIAGE_ATTEMPTS[case.id] = attempts
+            _save_monitor_checkpoint()
             try:
                 details = await adapter.get_request_details(case.external_key or case.id)
                 if str(details.get("status_category", "")).upper() == "DONE":
@@ -472,6 +488,7 @@ async def _poll_jira_once() -> None:
                         "studio-triage-retry-pending",
                     ):
                         _tag_local_case(case.id, tag, False)
+                    _save_monitor_checkpoint()
                     continue
                 case = case.model_copy(
                     update={
@@ -489,7 +506,6 @@ async def _poll_jira_once() -> None:
                 ProviderError,
                 RuntimeError,
             ) as exc:
-                attempts = JIRA_PENDING_TRIAGE_ATTEMPTS.get(case.id, 0) + 1
                 JIRA_MONITOR_STATE["last_error"] = (
                     f"Auto-triage attempt {attempts}/3 failed ({type(exc).__name__})."
                 )
@@ -501,6 +517,7 @@ async def _poll_jira_once() -> None:
                     JIRA_PENDING_TRIAGE_ATTEMPTS[case.id] = attempts
                     _tag_local_case(case.id, "studio-triage-failed", False)
                     _tag_local_case(case.id, "studio-triage-retry-pending", True)
+                _save_monitor_checkpoint()
                 continue
             RUNS[result.id] = result
             _save_run(result)
@@ -512,6 +529,7 @@ async def _poll_jira_once() -> None:
                 "studio-triage-retry-pending",
             ):
                 _tag_local_case(case.id, tag, False)
+            _save_monitor_checkpoint()
             JIRA_MONITOR_STATE["auto_triaged_count"] = (
                 int(JIRA_MONITOR_STATE["auto_triaged_count"]) + 1
             )

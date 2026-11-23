@@ -1109,8 +1109,9 @@ def test_setup_rejects_knowledge_folder_without_approved_manifest(
     assert "KNOWLEDGE_DIR" not in os.environ
 
 
-def test_auto_triage_creates_reviewable_draft_for_new_ticket_only(monkeypatch) -> None:
+def test_auto_triage_resumes_pending_ticket_after_restart(monkeypatch, tmp_path) -> None:
     from app import main
+    from app.store import LocalStore
 
     monkeypatch.setenv("MODEL_PROVIDER", "demo")
     monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
@@ -1120,6 +1121,14 @@ def test_auto_triage_creates_reviewable_draft_for_new_ticket_only(monkeypatch) -
     monkeypatch.setenv("JSM_QUEUE_ID", "2")
     monkeypatch.setenv("JSM_AUTO_TRIAGE_NEW_TICKETS", "true")
     monkeypatch.setenv("KNOWLEDGE_DIR", str(TEST_KNOWLEDGE_DIR))
+    store = LocalStore(tmp_path / "monitor.sqlite3")
+    monkeypatch.setattr(main, "STATE_STORE", store)
+    knowledge_ready = {"value": True}
+    monkeypatch.setattr(
+        main,
+        "knowledge_status",
+        lambda: {"mode": "local", "configured": True, "available": knowledge_ready["value"], "source_count": 1, "message": ""},
+    )
 
     def make_case(case_id: str, created_at: str) -> CaseRecord:
         return CaseRecord(
@@ -1180,12 +1189,114 @@ def test_auto_triage_creates_reviewable_draft_for_new_ticket_only(monkeypatch) -
     assert not any(run.case_id == "HELP-20" for run in main.RUNS.values())
 
     current_cases.append(new_case)
+    knowledge_ready["value"] = False
+    asyncio.run(main._poll_jira_once())
+    assert main.JIRA_MONITOR_STATE["retry_pending_count"] == 1
+
+    main.JIRA_SEEN_KEYS.clear()
+    main.JIRA_PENDING_TRIAGE_ATTEMPTS.clear()
+    main.JIRA_LOCAL_TAGS.clear()
+    main.JIRA_MONITOR_BASELINED = False
+    main.JIRA_MONITOR_BASELINE_AT = None
+    main.JIRA_AUTO_TRIAGE_BASELINE_AT = None
+    main.JIRA_AUTO_TRIAGE_WAS_ENABLED = False
+    main._restore_monitor_checkpoint(store.load_monitor_state())
+    knowledge_ready["value"] = True
     asyncio.run(main._poll_jira_once())
 
     run = next(run for run in main.RUNS.values() if run.case_id == "HELP-21")
     assert run.status == "awaiting_human"
     assert run.ticket_comment_published is False
     assert main.JIRA_MONITOR_STATE["auto_triaged_count"] == 1
+
+
+def test_auto_triage_reserves_each_retry_before_provider_work(monkeypatch, tmp_path) -> None:
+    from app import main
+    from app.store import LocalStore
+
+    monkeypatch.setenv("MODEL_PROVIDER", "demo")
+    monkeypatch.setenv("JSM_BASE_URL", "https://demo.atlassian.net")
+    monkeypatch.setenv("JSM_USER_EMAIL", "agent@example.com")
+    monkeypatch.setenv("JSM_API_TOKEN", "test-token")
+    monkeypatch.setenv("JSM_SERVICE_DESK_ID", "1")
+    monkeypatch.setenv("JSM_QUEUE_ID", "2")
+    monkeypatch.setenv("JSM_AUTO_TRIAGE_NEW_TICKETS", "true")
+    monkeypatch.setenv("KNOWLEDGE_DIR", str(TEST_KNOWLEDGE_DIR))
+    store = LocalStore(tmp_path / "crash-retry.sqlite3")
+    monkeypatch.setattr(main, "STATE_STORE", store)
+    monkeypatch.setattr(main, "CASES", {})
+    monkeypatch.setattr(main, "RUNS", {})
+    monkeypatch.setattr(main, "JIRA_SEEN_KEYS", set())
+    monkeypatch.setattr(main, "JIRA_PENDING_TRIAGE_ATTEMPTS", {})
+    monkeypatch.setattr(main, "JIRA_LOCAL_TAGS", {})
+    monkeypatch.setattr(main, "JIRA_MONITOR_BASELINED", False)
+    monkeypatch.setattr(main, "JIRA_MONITOR_BASELINE_AT", None)
+    monkeypatch.setattr(main, "JIRA_AUTO_TRIAGE_BASELINE_AT", None)
+    monkeypatch.setattr(main, "JIRA_AUTO_TRIAGE_WAS_ENABLED", False)
+    monkeypatch.setattr(main, "JIRA_MONITOR_LOCK", asyncio.Lock())
+    monkeypatch.setattr(main, "WORKFLOW_LOCKS", {})
+    monkeypatch.setattr(
+        main,
+        "knowledge_status",
+        lambda: {"mode": "local", "configured": True, "available": True, "source_count": 1, "message": ""},
+    )
+    failure = {"value": True, "calls": 0}
+
+    def crash_during_run(*_args, **_kwargs):
+        failure["calls"] += 1
+        if failure["value"]:
+            raise SystemExit("simulated process interruption")
+        raise AssertionError("a fourth run must not be started")
+
+    monkeypatch.setattr(main, "run_workflow", crash_during_run)
+
+    def make_case() -> CaseRecord:
+        return CaseRecord(
+            id="CRASH-1", external_key="CRASH-1", source="jira-service-management",
+            title="Synthetic interruption case", requester="Synthetic Requester",
+            channel="Jira Service Management",
+            created_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            priority="High", category="Connectivity", status="Open",
+            body="Synthetic request for retry recovery.", impact="One synthetic user",
+        )
+
+    case = make_case()
+    current_cases: list[CaseRecord] = []
+
+    class FakeAdapter:
+        async def list_queue_cases(self, limit=50, start=0):
+            return list(current_cases) if start == 0 else []
+
+        async def get_request_details(self, issue_key):
+            assert issue_key == "CRASH-1"
+            return {"summary": case.title, "description": case.body, "status": "Open"}
+
+    monkeypatch.setattr(main, "create_itsm_adapter", lambda *_args, **_kwargs: FakeAdapter())
+    asyncio.run(main._poll_jira_once())
+    current_cases.append(case)
+
+    for expected_attempt in (1, 2, 3):
+        try:
+            asyncio.run(main._poll_jira_once())
+        except SystemExit as exc:
+            assert str(exc) == "simulated process interruption"
+        else:
+            raise AssertionError("the simulated crash should interrupt this poll")
+        assert store.load_monitor_state()["pending_attempts"] == {"CRASH-1": expected_attempt}
+        main.JIRA_SEEN_KEYS.clear()
+        main.JIRA_PENDING_TRIAGE_ATTEMPTS.clear()
+        main.JIRA_LOCAL_TAGS.clear()
+        main.JIRA_MONITOR_BASELINED = False
+        main.JIRA_MONITOR_BASELINE_AT = None
+        main.JIRA_AUTO_TRIAGE_BASELINE_AT = None
+        main.JIRA_AUTO_TRIAGE_WAS_ENABLED = False
+        main._restore_monitor_checkpoint(store.load_monitor_state())
+
+    failure["value"] = False
+    asyncio.run(main._poll_jira_once())
+    assert failure["calls"] == 3
+    assert "CRASH-1" not in main.JIRA_PENDING_TRIAGE_ATTEMPTS
+    assert "studio-triage-failed" in main.JIRA_LOCAL_TAGS.get("CRASH-1", set())
 
 def test_plan_critic_requires_structured_latest_score_and_review_arrays() -> None:
     score, findings, missing, valid = workflow._plan_critic_result(
