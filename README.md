@@ -52,7 +52,7 @@ npm --prefix frontend run build
 
 Open **http://127.0.0.1:8000**, select **SUP-4821 — VPN disconnects during customer calls**, and choose **Run workflow**. Look for `KB-104` in the evidence, then edit the proposed reply and choose **Save edit & re-review** to see how a change goes back through verification. [Guided walkthrough](docs/demo-guide.md)
 
-To connect a Jira Service Management Cloud queue, open **Setup** in the left navigation. Enter the Jira site, account email and API token, then discover and choose a service desk and queue. The app checks queue access before saving. Select a local knowledge folder that contains the approved-source manifest, and review the automatic triage and escalation defaults. The token is stored in the local ignored `.env` file and is never sent back to the browser. [Connector setup](docs/connector-setup.md)
+To connect a Jira Service Management Cloud queue, open **Setup** in the left navigation. Enter the Jira site, account email and API token, then discover and choose a service desk and queue. The app checks queue access before saving. Select a local knowledge folder that contains the approved-source manifest, and review the automatic triage and escalation defaults. The token is stored in the local ignored `.env` file and is never sent back to the browser. [Connector setup](docs/connector-setup.md) · [Connector development guide](docs/connector-development.md)
 
 ## Inside a run
 
