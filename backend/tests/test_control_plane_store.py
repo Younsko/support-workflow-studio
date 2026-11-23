@@ -385,6 +385,60 @@ def test_runner_session_uses_current_workspace_role_and_rejects_revoked_runner(
         )
 
 
+def test_external_write_authorization_rechecks_live_role_and_runner(store, owner) -> None:
+    workspace = store.create_workspace(owner, name="Support Team", slug="support-team")
+    workspace_id = str(workspace["id"])
+    approver = Principal(subject="oidc|approver", email="approver@example.test")
+    now = datetime.now(UTC)
+    invite_token = secrets.token_urlsafe(32)
+    invitation = store.create_invitation(
+        workspace_id,
+        owner,
+        email=approver.email,
+        role="Approver",
+        token=invite_token,
+        expires_at=now + timedelta(hours=2),
+        now=now,
+    )
+    store.redeem_invitation(str(invitation["id"]), invite_token, approver, now=now)
+    runner = store.create_runner_enrollment(
+        workspace_id,
+        owner,
+        name="CI runner",
+        token=secrets.token_urlsafe(32),
+        expires_at=now + timedelta(days=30),
+        now=now,
+    )
+    runner_id = str(runner["id"])
+
+    assert store.authorize_runner_action(
+        workspace_id, runner_id, approver.subject, "publish_ticket_reply", now=now
+    ) == "Approver"
+
+    store.change_member_role(
+        workspace_id, approver.subject, owner, role="Operator", now=now
+    )
+    with pytest.raises(MembershipDenied):
+        store.authorize_runner_action(
+            workspace_id, runner_id, approver.subject, "publish_ticket_reply", now=now
+        )
+
+    store.change_member_role(
+        workspace_id, approver.subject, owner, role="Approver", now=now
+    )
+    store.revoke_runner(workspace_id, runner_id, owner, now=now)
+    with pytest.raises(WorkspaceNotFound):
+        store.authorize_runner_action(
+            workspace_id, runner_id, approver.subject, "publish_ticket_reply", now=now
+        )
+
+    store.remove_member(workspace_id, approver.subject, owner, now=now)
+    with pytest.raises(WorkspaceNotFound):
+        store.authorize_runner_action(
+            workspace_id, runner_id, approver.subject, "publish_ticket_reply", now=now
+        )
+
+
 def test_control_plane_database_target_comparison_ignores_credentials() -> None:
     pytest.importorskip("psycopg")
 

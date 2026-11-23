@@ -370,6 +370,7 @@ def verify_workspace_session_with_signing_config(
             not isinstance(expected_audience, str)
             or not isinstance(expected_workspace_id, str)
             or not isinstance(expected_runner_id, str)
+            or expected_audience != expected_runner_id
             or (audience is not None and token_audience != audience)
             or (workspace_id is not None and token_workspace_id != workspace_id)
             or (runner_id is not None and token_runner_id != runner_id)
