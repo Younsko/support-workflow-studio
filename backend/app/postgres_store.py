@@ -22,6 +22,9 @@ from .store import (
 )
 
 
+_SCHEMA_MIGRATION_LOCK_KEY = 0x53575352554E4E52
+
+
 class PostgresStore:
     """Postgres-backed implementation of the workflow state-store contract.
 
@@ -140,6 +143,10 @@ class PostgresStore:
             )""",
         )
         with self._connect() as connection:
+            # Serialize DDL when runner workers start together after a deploy.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(%s)", (_SCHEMA_MIGRATION_LOCK_KEY,)
+            )
             for statement in statements:
                 connection.execute(statement)
             connection.execute("ALTER TABLE run_events ADD COLUMN IF NOT EXISTS actor_id TEXT")
