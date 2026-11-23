@@ -12,7 +12,7 @@ The operator selects either a local knowledge directory with an explicit allowli
 
 Confluence credentials stay in the local ignored `.env` file in this prototype. This does not provide hosted runner secret delivery, tenant isolation, or encrypted browser-to-runner handling. For confidential cases, use a separate local copy, review the selected spaces and provider data handling, minimize the request text, and obtain the necessary authorization before connecting ticket sources.
 
-`PRIVATE_LOCAL_MODE=true` requires local Ollama inference and blocks Jira reads and writes. It is a prototype guard, not an access-control system. The default public demo uses synthetic data and makes no model calls.
+`PRIVATE_LOCAL_MODE=true` requires local Ollama inference and blocks Jira reads and writes. It also rejects `SUPPORT_WORKFLOW_DATABASE_URL`, because this prototype cannot verify that a Postgres host is local; use its default SQLite store in this mode. It is a prototype guard, not an access-control system. The default public demo uses synthetic data and makes no model calls.
 
 ## Release check
 

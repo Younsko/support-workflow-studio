@@ -709,6 +709,10 @@ def configured_store_path() -> Path:
 def configured_store() -> WorkflowStateStore:
     postgres_url = os.getenv("SUPPORT_WORKFLOW_DATABASE_URL", "").strip()
     if postgres_url:
+        if os.getenv("PRIVATE_LOCAL_MODE", "").strip().lower() in {"1", "true", "yes"}:
+            raise RuntimeError(
+                "PRIVATE_LOCAL_MODE refuses Postgres storage because the database host cannot be verified as local."
+            )
         from .postgres_store import PostgresStore
 
         return PostgresStore(postgres_url)

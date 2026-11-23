@@ -8,7 +8,7 @@ import pytest
 from app import main
 from app.fixtures import demo_cases
 from app.schemas import WorkflowResult
-from app.store import LocalStore, WorkflowStateStore
+from app.store import LocalStore, WorkflowStateStore, configured_store
 from fastapi.testclient import TestClient
 
 
@@ -33,6 +33,17 @@ def _minimal_run(run_id: str | None = None) -> WorkflowResult:
         reviewer_findings=[],
         stages=[],
     )
+
+
+def test_private_local_mode_rejects_postgres_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRIVATE_LOCAL_MODE", "true")
+    monkeypatch.setenv(
+        "SUPPORT_WORKFLOW_DATABASE_URL",
+        "postgresql://user:secret@remote.example/database",
+    )
+
+    with pytest.raises(RuntimeError, match="PRIVATE_LOCAL_MODE refuses Postgres storage"):
+        configured_store()
 
 
 def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path) -> None:
