@@ -578,9 +578,10 @@ async def run_workflow(
     source_snapshot_hash: str | None = None,
     agent_role: str | None = None,
     agent_instructions: str | None = None,
+    run_id: str | None = None,
 ) -> WorkflowResult:
     started = time.perf_counter()
-    run_id = f"RUN-{uuid.uuid4().hex[:8].upper()}"
+    run_id = run_id or f"RUN-{uuid.uuid4().hex[:8].upper()}"
     reviewed_snapshot_hash = source_snapshot_hash or content_fingerprint(
         case.title, case.body, case.status
     )

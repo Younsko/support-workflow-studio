@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity, ArrowDownRight, Check, CheckCheck, ChevronDown,
   CircleHelp, Clock3, FileSearch, Inbox, Layers3, LockKeyhole, MessageSquareText,
@@ -91,6 +91,7 @@ export default function App() {
   const [setupRevision, setSetupRevision] = useState(0)
   const [intake, setIntake] = useState({ title: '', requester: '', body: '', impact: 'Unknown impact' })
   const [decisionBusy, setDecisionBusy] = useState(false)
+  const publishedRunIdempotencyKey = useRef<string | null>(null)
   const selected = cases.find((item) => item.id === selectedId)
 const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
   ['local', 'confluence'].includes(integrations?.knowledge.mode ?? '') && integrations?.knowledge.configured && integrations.knowledge.available
@@ -173,6 +174,7 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
 
   async function startPublishedWorkflow(workflowId: string, version: number, contentHash: string) {
     if (!selected) return
+    publishedRunIdempotencyKey.current ??= crypto.randomUUID()
     setRunning(true); setError('')
     try {
       const result = await api<Run>(`/v1/workflows/${encodeURIComponent(workflowId)}/runs`, {
@@ -181,10 +183,12 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
           case_id: selected.id,
           workflow_version: version,
           workflow_content_hash: contentHash,
+          idempotency_key: publishedRunIdempotencyKey.current,
           candidate_count: candidateCount,
           include_model_council: councilEnabled,
         }),
       })
+      publishedRunIdempotencyKey.current = null
       setRun(result); setDraft(result.draft); setActiveSection('inbox')
       setRunAuditRefresh((value) => value + 1)
       void refreshMetrics()

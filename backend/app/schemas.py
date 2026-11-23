@@ -118,6 +118,7 @@ class PublishedWorkflowRunRequest(BaseModel):
     case_id: str = Field(min_length=1, max_length=100)
     workflow_version: int = Field(ge=1)
     workflow_content_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
     candidate_count: int = Field(default=2, ge=1, le=3)
     include_model_council: bool = False
 

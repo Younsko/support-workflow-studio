@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app import main
 from app.fixtures import demo_cases
 from app.schemas import WorkflowResult
 from app.store import LocalStore
+from fastapi.testclient import TestClient
 
 
 def _minimal_run(run_id: str | None = None) -> WorkflowResult:
@@ -33,6 +32,81 @@ def _minimal_run(run_id: str | None = None) -> WorkflowResult:
         reviewer_findings=[],
         stages=[],
     )
+
+
+def test_published_run_claim_is_idempotent_and_completed_with_saved_run(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    now = datetime.now(UTC)
+    binding = {
+        "idempotency_key": "request-1",
+        "case_id": "JSM-123",
+        "workflow_id": "support-intake",
+        "workflow_version": 3,
+        "workflow_content_hash": "a" * 64,
+    }
+    first = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-A1B2C3D4",
+        lease_owner="worker-a",
+        now=now,
+        lease_seconds=30,
+    )
+    assert first["state"] == "acquired"
+    assert store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-IGNORED1",
+        lease_owner="worker-b",
+        now=now + timedelta(seconds=5),
+        lease_seconds=30,
+    )["state"] == "in_progress"
+
+    run = _minimal_run("RUN-A1B2C3D4")
+    run.case_id = "JSM-123"
+    run.workflow_id = "support-intake"
+    run.workflow_version = 3
+    run.workflow_content_hash = "a" * 64
+    store.save_run(run, execution_claim=("request-1", "worker-a"))
+
+    cached = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-IGNORED2",
+        lease_owner="worker-c",
+        now=now + timedelta(seconds=10),
+    )
+    assert cached["state"] == "completed"
+    assert cached["run_id"] == run.id
+    assert store.load_runs()[run.id].workflow_content_hash == "a" * 64
+
+
+def test_expired_published_run_lease_can_be_reclaimed_with_fencing(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    now = datetime.now(UTC)
+    binding = {
+        "idempotency_key": "request-2",
+        "case_id": "JSM-124",
+        "workflow_id": "support-intake",
+        "workflow_version": 1,
+        "workflow_content_hash": "b" * 64,
+    }
+    original = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-01020304",
+        lease_owner="worker-old",
+        now=now,
+        lease_seconds=5,
+    )
+    reclaimed = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-IGNORED3",
+        lease_owner="worker-new",
+        now=now + timedelta(seconds=6),
+        lease_seconds=30,
+    )
+    assert original["run_id"] == reclaimed["run_id"]
+    assert reclaimed["attempt"] == 2
+    with pytest.raises(ValueError, match="lease was lost"):
+        store.save_run(_minimal_run("RUN-01020304"), execution_claim=("request-2", "worker-old"))
+    store.fail_published_run_claim("request-2", "worker-new", now + timedelta(seconds=7))
 
 
 def test_local_state_survives_reload_and_keeps_human_decision(tmp_path, monkeypatch) -> None:

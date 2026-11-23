@@ -7,7 +7,7 @@ import os
 import re
 import sqlite3
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -15,7 +15,6 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .schemas import CaseRecord, WorkflowResult
-
 
 RunEventType = Literal[
     "workflow.started",
@@ -77,6 +76,21 @@ class LocalStore:
                 "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
             connection.execute(
+                """CREATE TABLE IF NOT EXISTS published_run_claims (
+                    idempotency_key TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL UNIQUE,
+                    case_id TEXT NOT NULL,
+                    workflow_id TEXT NOT NULL,
+                    workflow_version INTEGER NOT NULL,
+                    workflow_content_hash TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(state IN ('running', 'completed', 'failed')),
+                    lease_owner TEXT,
+                    lease_until TEXT,
+                    attempt INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                )"""
+            )
+            connection.execute(
                 """CREATE TABLE IF NOT EXISTS run_events (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                     event_id TEXT NOT NULL UNIQUE,
@@ -115,6 +129,88 @@ class LocalStore:
             rows = connection.execute("SELECT id, payload FROM runs ORDER BY rowid").fetchall()
         return {row[0]: WorkflowResult.model_validate_json(row[1]) for row in rows}
 
+    def claim_published_run(
+        self,
+        *,
+        idempotency_key: str,
+        proposed_run_id: str,
+        case_id: str,
+        workflow_id: str,
+        workflow_version: int,
+        workflow_content_hash: str,
+        lease_owner: str,
+        now: datetime,
+        lease_seconds: int = 300,
+    ) -> dict[str, object]:
+        """Reserve one published run atomically; expired workers are fenced by owner."""
+        for value, label in (
+            (idempotency_key, "idempotency_key"),
+            (proposed_run_id, "run_id"),
+            (case_id, "case_id"),
+            (workflow_id, "workflow_id"),
+            (lease_owner, "lease_owner"),
+        ):
+            if not isinstance(value, str) or not _SAFE_RUN_ID.fullmatch(value):
+                raise ValueError(f"{label} must be a short stable identifier.")
+        if workflow_version < 1 or not re.fullmatch(r"[a-f0-9]{64}", workflow_content_hash):
+            raise ValueError("Published workflow identity is invalid.")
+        if lease_seconds < 1 or lease_seconds > 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600.")
+        now_utc = now.astimezone(UTC)
+        now_value = now_utc.isoformat()
+        lease_until = (now_utc + timedelta(seconds=lease_seconds)).isoformat()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM published_run_claims WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            binding = (case_id, workflow_id, workflow_version, workflow_content_hash)
+            if row is not None:
+                stored = (row["case_id"], row["workflow_id"], row["workflow_version"], row["workflow_content_hash"])
+                if stored != binding:
+                    raise ValueError("Idempotency key was already used for a different case or published workflow.")
+                if row["state"] == "completed":
+                    connection.commit()
+                    return {"state": "completed", "run_id": row["run_id"], "attempt": row["attempt"]}
+                if row["state"] == "running" and row["lease_until"] and row["lease_until"] > now_value:
+                    connection.commit()
+                    return {"state": "in_progress", "run_id": row["run_id"], "attempt": row["attempt"]}
+                attempt = int(row["attempt"]) + 1
+                connection.execute(
+                    "UPDATE published_run_claims SET state='running', lease_owner=?, lease_until=?, attempt=?, updated_at=? WHERE idempotency_key=?",
+                    (lease_owner, lease_until, attempt, now_value, idempotency_key),
+                )
+                run_id = row["run_id"]
+            else:
+                attempt = 1
+                run_id = proposed_run_id
+                connection.execute(
+                    """INSERT INTO published_run_claims(
+                        idempotency_key, run_id, case_id, workflow_id, workflow_version,
+                        workflow_content_hash, state, lease_owner, lease_until, attempt, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)""",
+                    (idempotency_key, run_id, case_id, workflow_id, workflow_version,
+                     workflow_content_hash, lease_owner, lease_until, attempt, now_value),
+                )
+            connection.commit()
+            return {"state": "acquired", "run_id": run_id, "attempt": attempt, "lease_owner": lease_owner}
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def fail_published_run_claim(self, idempotency_key: str, lease_owner: str, now: datetime) -> None:
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE published_run_claims SET state='failed', lease_owner=NULL, lease_until=NULL, updated_at=? WHERE idempotency_key=? AND lease_owner=? AND state='running'",
+                (now.astimezone(UTC).isoformat(), idempotency_key, lease_owner),
+            )
+            connection.commit()
+
     def save_case(self, case: CaseRecord) -> None:
         with closing(self._connect()) as connection:
             connection.execute(
@@ -129,6 +225,7 @@ class LocalStore:
         run: WorkflowResult,
         *,
         audit_event: tuple[str, str, str, dict[str, object]] | None = None,
+        execution_claim: tuple[str, str] | None = None,
     ) -> None:
         """Save a run and, optionally, its audit event in one SQLite transaction."""
         event_input: RunEventInput | None = None
@@ -158,6 +255,13 @@ class LocalStore:
                     event_type=audit_event[2],
                     metadata=event_input,
                 )
+            if execution_claim is not None:
+                cursor = connection.execute(
+                    "UPDATE published_run_claims SET state='completed', lease_owner=NULL, lease_until=NULL WHERE idempotency_key=? AND lease_owner=? AND run_id=? AND state='running'",
+                    (execution_claim[0], execution_claim[1], run.id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("Published run lease was lost before completion.")
             connection.commit()
         except Exception:
             connection.rollback()

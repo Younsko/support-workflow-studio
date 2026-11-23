@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from dotenv import load_dotenv, set_key, unset_key
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -196,9 +197,10 @@ def _save_run(
     run: WorkflowResult,
     *,
     audit_event: tuple[str, str, str, dict[str, object]] | None = None,
+    execution_claim: tuple[str, str] | None = None,
 ) -> None:
     if STATE_STORE is not None:
-        STATE_STORE.save_run(run, audit_event=audit_event)
+        STATE_STORE.save_run(run, audit_event=audit_event, execution_claim=execution_claim)
 
 
 def _enabled_env(name: str) -> bool:
@@ -1380,11 +1382,41 @@ async def start_published_workflow(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if current != plan:
             raise HTTPException(status_code=409, detail="Workflow execution bindings changed; reload and validate again.")
-        return await _start_workflow_locked(
-            run_request,
-            execution_plan=plan,
-            published_snapshot=published,
-        )
+        store = STATE_STORE or configured_store()
+        lease_owner = uuid4().hex
+        try:
+            claim = store.claim_published_run(
+                idempotency_key=request.idempotency_key,
+                proposed_run_id=f"RUN-{uuid4().hex[:8].upper()}",
+                case_id=request.case_id,
+                workflow_id=workflow_id,
+                workflow_version=request.workflow_version,
+                workflow_content_hash=request.workflow_content_hash,
+                lease_owner=lease_owner,
+                now=datetime.now(UTC),
+                lease_seconds=3600,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if claim["state"] == "completed":
+            cached = RUNS.get(str(claim["run_id"])) or store.load_runs().get(str(claim["run_id"]))
+            if cached is None:
+                raise HTTPException(status_code=409, detail="The completed idempotent run is missing from local storage.")
+            RUNS[cached.id] = cached
+            return cached
+        if claim["state"] == "in_progress":
+            raise HTTPException(status_code=409, detail="This idempotency key already has a run in progress.")
+        try:
+            return await _start_workflow_locked(
+                run_request,
+                execution_plan=plan,
+                published_snapshot=published,
+                execution_claim=(request.idempotency_key, lease_owner),
+                execution_run_id=str(claim["run_id"]),
+            )
+        except Exception:
+            store.fail_published_run_claim(request.idempotency_key, lease_owner, datetime.now(UTC))
+            raise
 
 
 async def _start_workflow_locked(
@@ -1392,6 +1424,8 @@ async def _start_workflow_locked(
     *,
     execution_plan: ExecutionPlan | None = None,
     published_snapshot: PublishedWorkflow | None = None,
+    execution_claim: tuple[str, str] | None = None,
+    execution_run_id: str | None = None,
 ) -> WorkflowResult:
     case = CASES.get(request.case_id)
     if not case:
@@ -1482,6 +1516,7 @@ async def _start_workflow_locked(
             source_snapshot_hash=source_snapshot_hash,
             agent_role=execution_plan.agent_role if execution_plan else None,
             agent_instructions=execution_plan.agent_instructions if execution_plan else None,
+            run_id=execution_run_id,
         )
     except KnowledgeConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1518,6 +1553,7 @@ async def _start_workflow_locked(
                 ),
             },
         ),
+        execution_claim=execution_claim,
     )
     if case.source == "jira-service-management":
         for tag in (

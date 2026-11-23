@@ -196,6 +196,7 @@ def test_run_endpoint_compiles_snapshot_before_case_lookup(
         case_id="missing-synthetic-case",
         workflow_version=published.version,
         workflow_content_hash=published.content_hash,
+        idempotency_key="synthetic-run-request-1",
     )
 
     with pytest.raises(HTTPException) as error:
