@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -20,6 +21,9 @@ class LocalStore:
             )
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS monitor_state (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
             )
             connection.commit()
 
@@ -51,6 +55,29 @@ class LocalStore:
                 "INSERT INTO runs(id, payload) VALUES (?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
                 (run.id, run.model_dump_json()),
+            )
+            connection.commit()
+
+    def load_monitor_state(self) -> dict[str, object]:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT payload FROM monitor_state WHERE id = 'jira'"
+            ).fetchone()
+        if row is None:
+            return {}
+        try:
+            value = json.loads(row[0])
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def save_monitor_state(self, state: dict[str, object]) -> None:
+        payload = json.dumps(state, separators=(",", ":"), sort_keys=True)
+        with closing(self._connect()) as connection:
+            connection.execute(
+                "INSERT INTO monitor_state(id, payload) VALUES ('jira', ?) "
+                "ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+                (payload,),
             )
             connection.commit()
 

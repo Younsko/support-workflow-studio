@@ -169,6 +169,62 @@ def _model_destination_scope(provider: str, base_url: str) -> str:
     return hashlib.sha256(f"{provider}\0{destination}".encode("utf-8")).hexdigest()
 
 
+def _monitor_checkpoint() -> dict[str, object]:
+    return {
+        "seen_keys": sorted(JIRA_SEEN_KEYS),
+        "pending_attempts": dict(JIRA_PENDING_TRIAGE_ATTEMPTS),
+        "local_tags": {case_id: sorted(tags) for case_id, tags in JIRA_LOCAL_TAGS.items()},
+        "monitor_baselined": JIRA_MONITOR_BASELINED,
+        "monitor_baseline_at": JIRA_MONITOR_BASELINE_AT.isoformat() if JIRA_MONITOR_BASELINE_AT else None,
+        "auto_triage_baseline_at": JIRA_AUTO_TRIAGE_BASELINE_AT.isoformat() if JIRA_AUTO_TRIAGE_BASELINE_AT else None,
+        "auto_triage_was_enabled": JIRA_AUTO_TRIAGE_WAS_ENABLED,
+    }
+
+
+def _save_monitor_checkpoint() -> None:
+    if STATE_STORE is not None:
+        STATE_STORE.save_monitor_state(_monitor_checkpoint())
+
+
+def _restore_monitor_checkpoint(state: dict[str, object]) -> None:
+    global JIRA_MONITOR_BASELINED, JIRA_MONITOR_BASELINE_AT
+    global JIRA_AUTO_TRIAGE_BASELINE_AT, JIRA_AUTO_TRIAGE_WAS_ENABLED
+    seen = state.get("seen_keys")
+    if isinstance(seen, list):
+        JIRA_SEEN_KEYS.update(value for value in seen if isinstance(value, str))
+    attempts = state.get("pending_attempts")
+    if isinstance(attempts, dict):
+        for case_id, count in attempts.items():
+            if isinstance(case_id, str) and isinstance(count, int) and 0 <= count < 3:
+                JIRA_PENDING_TRIAGE_ATTEMPTS[case_id] = count
+    tags = state.get("local_tags")
+    if isinstance(tags, dict):
+        for case_id, values in tags.items():
+            if isinstance(case_id, str) and isinstance(values, list):
+                JIRA_LOCAL_TAGS[case_id] = {
+                    tag for tag in values if isinstance(tag, str) and tag.startswith("studio-triage-")
+                }
+    for case_id, case in CASES.items():
+        JIRA_LOCAL_TAGS.setdefault(
+            case_id, {tag for tag in case.tags if tag.startswith("studio-triage-")}
+        )
+    JIRA_MONITOR_BASELINED = state.get("monitor_baselined") is True
+    for name, global_name in (
+        ("monitor_baseline_at", "monitor"),
+        ("auto_triage_baseline_at", "auto"),
+    ):
+        raw = state.get(name)
+        try:
+            value = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            value = None
+        if global_name == "monitor":
+            JIRA_MONITOR_BASELINE_AT = value
+        else:
+            JIRA_AUTO_TRIAGE_BASELINE_AT = value
+    JIRA_AUTO_TRIAGE_WAS_ENABLED = state.get("auto_triage_was_enabled") is True
+
+
 def _private_local_mode_enabled() -> bool:
     return _enabled_env("PRIVATE_LOCAL_MODE")
 
@@ -352,6 +408,7 @@ async def _poll_jira_once() -> None:
             page_cap_reached=page_cap_reached,
             auto_triage_enabled=auto_triage,
         )
+        _save_monitor_checkpoint()
 
     if not auto_triage or not pending_cases:
         return
@@ -368,6 +425,7 @@ async def _poll_jira_once() -> None:
         )
         for case in pending_cases:
             _tag_local_case(case.id, "studio-triage-paused-knowledge", True)
+        _save_monitor_checkpoint()
         return
     if (
         provider.requires_external_ticket_consent
@@ -378,6 +436,7 @@ async def _poll_jira_once() -> None:
         )
         for case in pending_cases:
             _tag_local_case(case.id, "studio-triage-paused-consent", True)
+        _save_monitor_checkpoint()
         return
 
     ordered_pending_cases = sorted(
@@ -459,6 +518,7 @@ async def _poll_jira_once() -> None:
     JIRA_MONITOR_STATE["retry_pending_count"] = len(
         JIRA_PENDING_TRIAGE_ATTEMPTS
     )
+    _save_monitor_checkpoint()
 
 
 async def _jira_monitor_loop() -> None:
@@ -480,6 +540,7 @@ async def lifespan(_: FastAPI):
     STATE_STORE = configured_store()
     CASES.update(STATE_STORE.load_cases())
     RUNS.update(STATE_STORE.load_runs())
+    _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
     monitor = asyncio.create_task(_jira_monitor_loop())
     try:
         yield
