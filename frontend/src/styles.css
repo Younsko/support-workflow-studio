@@ -217,6 +217,21 @@ h1 { font-family: 'Newsreader', Georgia, serif; font-size: 30px; line-height: 1;
 .process-step.pending .step-marker { color: #829184; border-style: dashed; }
 .step-line { position: absolute; height: 1px; top: 9px; left: 20px; right: 3px; background: #dce2d6; }
 .process-step.complete .step-line { background: #b7c8a4; }
+.run-audit { margin: 0 0 15px; border: 1px solid #e6ebe3; border-radius: 9px; background: #fbfcf8; padding: 12px 14px 10px; }
+.run-audit-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; color: #78867d; }
+.run-audit-heading .section-label { color: #687a6d; }
+.run-audit-heading p { margin: 4px 0 0; color: #95a097; font-size: 9px; }
+.run-audit-empty { margin: 10px 0 1px; color: #86938a; font-size: 10px; }
+.run-audit-list { display: grid; gap: 0; margin: 12px 0 0; padding: 0; list-style: none; }
+.run-audit-list li { position: relative; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 9px; padding: 0 0 11px; }
+.run-audit-list li:last-child { padding-bottom: 1px; }
+.run-audit-mark { position: relative; z-index: 1; width: 8px; height: 8px; margin-top: 3px; border: 1px solid #93a696; border-radius: 50%; background: #f4f8f2; }
+.run-audit-mark.decision { border-color: #76986d; background: #e9f1e3; }
+.run-audit-mark.publish { border-color: #bb9960; background: #fbf3df; }
+.run-audit-list li:not(:last-child)::before { position: absolute; top: 10px; bottom: 0; left: 3px; width: 1px; background: #e1e7df; content: ''; }
+.run-audit-copy { display: grid; gap: 3px; min-width: 0; }
+.run-audit-copy b { color: #42594a; font-size: 10px; font-weight: 650; }
+.run-audit-copy small { color: #8b978f; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
 .step-copy b { color: #546b5a; font-size: 8px; display: block; white-space: nowrap; }
 .step-copy small { display: block; color: #a0a89f; font-size: 7px; margin-top: 3px; white-space: nowrap; }
 .result-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(180px, .85fr); gap: 12px; align-items: start; }

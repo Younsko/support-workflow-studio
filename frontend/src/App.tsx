@@ -27,6 +27,12 @@ type Run = {
   plan: string[]; plan_reviews: PlanReview[]; draft: string; verifier_findings: string[]; reviewer_findings: Finding[]; work_lanes: WorkLane[]; council_options: CouncilOption[]; stages: Stage[]; human_decision?: string | null
   ticket_comment_published: boolean; ticket_comment_id?: string | null; ticket_comment_outcome: string
 }
+type RunAuditEvent = {
+  sequence: number; event_id: string; run_id: string; case_id: string
+  event_type: 'workflow.started' | 'draft.edited' | 'decision.approved' | 'decision.rejected' | 'publish.attempted' | 'publish.succeeded' | 'publish.failed' | 'publish.unknown'
+  occurred_at: string; from_status?: string; to_status?: string
+  decision_version?: number; score?: number; outcome?: string
+}
 type Health = { status: string; provider_mode: string; provider: string; model: string; credentials_configured: boolean; private_local_mode: boolean }
 type WorkspaceMetrics = { open_cases: number; total_cases: number; workflow_runs: number; live_model_runs: number; drafts_passing_gate: number; reviewer_approved_runs: number; reviewer_edited_runs: number; reviewer_rejected_runs: number; public_replies_published: number; median_triage_seconds: number | null }
 type ProductSignal = { category: string; cases: { id: string; title: string; source: string; confidence: number }[] }
@@ -60,6 +66,10 @@ export default function App() {
   const [cases, setCases] = useState<SupportCase[]>([])
   const [selectedId, setSelectedId] = useState('SUP-4821')
   const [run, setRun] = useState<Run | null>(null)
+  const [runAuditEvents, setRunAuditEvents] = useState<RunAuditEvent[]>([])
+  const [runAuditError, setRunAuditError] = useState(false)
+  const [runAuditLoading, setRunAuditLoading] = useState(false)
+  const [runAuditRefresh, setRunAuditRefresh] = useState(0)
   const [health, setHealth] = useState<Health | null>(null)
   const [metrics, setMetrics] = useState<WorkspaceMetrics | null>(null)
   const [productSignals, setProductSignals] = useState<ProductSignal[]>([])
@@ -102,6 +112,16 @@ export default function App() {
     if (selectedId) api<Run>(`/workflows/latest/${selectedId}`).then(setRun).catch(() => undefined)
   }, [selectedId])
 
+  useEffect(() => {
+    if (!run) { setRunAuditEvents([]); setRunAuditError(false); setRunAuditLoading(false); return }
+    let cancelled = false
+    setRunAuditLoading(true)
+    api<RunAuditEvent[]>(`/workflows/${run.id}/events`)
+      .then((events) => { if (!cancelled) { setRunAuditEvents(events); setRunAuditError(false); setRunAuditLoading(false) } })
+      .catch(() => { if (!cancelled) { setRunAuditEvents([]); setRunAuditError(true); setRunAuditLoading(false) } })
+    return () => { cancelled = true }
+  }, [run?.id, runAuditRefresh])
+
   const filteredCases = useMemo(() => cases.filter((item) =>
     `${item.id} ${item.title} ${item.requester} ${item.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
   ), [cases, query])
@@ -143,6 +163,7 @@ export default function App() {
         method: 'POST', body: JSON.stringify({ case_id: selected.id, candidate_count: candidateCount, include_model_council: councilEnabled }),
       })
       setRun(result); setDraft(result.draft)
+      setRunAuditRefresh((value) => value + 1)
       void refreshMetrics()
       void refreshProductSignals()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Workflow could not start') }
@@ -157,6 +178,7 @@ export default function App() {
         method: 'POST', body: JSON.stringify({ decision, expected_version: run.approval_version, edited_draft: decision === 'edit' ? draft : null }),
       })
       setRun(updated)
+      setRunAuditRefresh((value) => value + 1)
       if (decision === 'edit') setDraft(updated.draft)
       void refreshMetrics()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Decision could not be saved') }
@@ -226,9 +248,10 @@ export default function App() {
     try {
       const result = await api<{ published: boolean; comment_id: string | null }>(`/workflows/${run.id}/publish-ticket-reply`, { method: 'POST' })
       setRun({ ...run, ticket_comment_published: true, ticket_comment_id: result.comment_id, ticket_comment_outcome: 'published' })
+      setRunAuditRefresh((value) => value + 1)
       void refreshMetrics()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Reply could not be published') }
-    finally { setDecisionBusy(false) }
+    finally { setRunAuditRefresh((value) => value + 1); setDecisionBusy(false) }
   }
 
   return (
@@ -343,6 +366,16 @@ export default function App() {
                     <div className="process-track">
                       {run.stages.map((stage, index) => <div className={`process-step ${stage.status}`} key={stage.id}><div className="step-marker">{stage.status === 'complete' ? <Check size={12} /> : stage.status === 'pending' ? <UserRound size={12} /> : <span>{index + 1}</span>}</div><div className="step-copy"><b>{stage.label}</b><small>{stage.actor}</small><small className="step-detail">{stage.detail}</small></div>{index < run.stages.length - 1 && <div className="step-line" />}</div>)}
                     </div>
+
+                    <section className="run-audit" aria-labelledby="run-audit-title">
+                      <div className="run-audit-heading"><div><span className="section-label" id="run-audit-title">{tr('Local run activity')}</span><p>{tr('Metadata only · local operator · not tamper-evident')}</p></div><Clock3 size={15} /></div>
+                      {runAuditLoading ? <p className="run-audit-empty" role="status">{tr('Loading run activity…')}</p> : runAuditError ? <p className="run-audit-empty" role="status">{tr('Run activity could not be loaded.')}</p> : runAuditEvents.length === 0
+                        ? <p className="run-audit-empty">{tr('No recorded run activity yet.')}</p>
+                        : <ol className="run-audit-list">{runAuditEvents.map((event) => <li key={event.event_id}>
+                          <span className={`run-audit-mark ${event.event_type.startsWith('publish.') ? 'publish' : event.event_type.startsWith('decision.') ? 'decision' : ''}`} aria-hidden="true" />
+                          <div className="run-audit-copy"><b>{tr(event.event_type)}</b><small><time dateTime={event.occurred_at}>{new Date(event.occurred_at).toLocaleString(locale === 'fr' ? 'fr-FR' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</time>{event.to_status ? ` · ${tr(event.to_status)}` : ''}{typeof event.score === 'number' ? ` · ${event.score.toFixed(1)}/10` : ''}{event.decision_version !== undefined ? ` · ${tr('Approval version')} ${event.decision_version}` : ''}{event.outcome ? ` · ${tr(event.outcome)}` : ''}</small></div>
+                        </li>)}</ol>}
+                    </section>
 
                     <div className="result-grid">
                       <div className="result-main">
