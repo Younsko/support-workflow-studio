@@ -30,6 +30,7 @@ from .confluence import (
     ConfluenceConfigurationError,
     ConfluenceRequestError,
 )
+from .control_plane.session_tokens import SessionTokenInvalid
 from .execution_plan import (
     ExecutionPlan,
     ExecutionPlanError,
@@ -49,6 +50,12 @@ from .knowledge import (
     knowledge_status,
 )
 from .providers import ProviderConfig, ProviderError, model_destination_scope
+from .runner_auth import (
+    RunnerAuthConfig,
+    RunnerAuthConfigurationError,
+    authenticate_bearer,
+    required_roles,
+)
 from .runner_identity import RunnerIdentity
 from .schemas import (
     CaseRecord,
@@ -640,6 +647,7 @@ async def _jira_monitor_loop() -> None:
 async def lifespan(_: FastAPI):
     global STATE_STORE
     _validate_private_local_mode()
+    RunnerAuthConfig.from_env()
     monitor: asyncio.Task[None] | None = None
     try:
         STATE_STORE = configured_store()
@@ -668,12 +676,21 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Support Workflow Studio", version="0.1.0", lifespan=lifespan)
 app.include_router(workflow_definitions_router)
+_runner_browser_origins = [
+    origin.strip()
+    for origin in os.getenv("SUPPORT_RUNNER_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        *_runner_browser_origins,
+    ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 
 
@@ -702,11 +719,96 @@ async def safe_validation_error(
 
 @app.middleware("http")
 async def require_local_client(request: Request, call_next) -> Response:
-    """This unauthenticated prototype must only accept loopback connections."""
+    """Keep loopback-only defaults; require workspace sessions for remote mode."""
     host = request.client.host if request.client else ""
+    allowed_hostnames = {"localhost", "127.0.0.1", "::1"}
+    try:
+        auth_config = RunnerAuthConfig.from_env()
+    except RunnerAuthConfigurationError:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Runner session verification is unavailable."},
+        )
+    if auth_config is not None:
+        hostname = (request.url.hostname or "").casefold()
+        if hostname not in allowed_hostnames | auth_config.allowed_hosts:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "The request hostname is not configured for this runner."},
+            )
+        origin = request.headers.get("origin")
+        if origin:
+            parsed_origin = urlsplit(origin)
+            normalized_origin = f"{parsed_origin.scheme}://{parsed_origin.netloc}".casefold()
+            same_origin = normalized_origin == (
+                f"{request.url.scheme}://{request.url.netloc}"
+            ).casefold()
+            valid_origin = (
+                bool(parsed_origin.hostname)
+                and parsed_origin.scheme in {"http", "https"}
+                and not parsed_origin.username
+                and not parsed_origin.password
+                and parsed_origin.path in {"", "/"}
+                and not parsed_origin.query
+                and not parsed_origin.fragment
+            )
+            if not valid_origin or (
+                not same_origin and normalized_origin not in auth_config.allowed_origins
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "The browser origin is not configured for this runner."},
+                )
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        remote_client = host != "testclient" and (
+            address is None or not address.is_loopback
+        )
+        if (
+            remote_client
+            and request.url.scheme != "https"
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Remote runner requests require HTTPS."},
+            )
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if request.url.path.startswith("/api/"):
+            try:
+                claims = authenticate_bearer(
+                    request.headers.get("authorization"), config=auth_config
+                )
+            except SessionTokenInvalid:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid workspace runner session is required."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            except (RunnerAuthConfigurationError, RuntimeError):
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Runner session verification is unavailable."},
+                )
+            allowed_roles = required_roles(request.method, request.url.path)
+            if allowed_roles is None or claims["role"] not in allowed_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "The workspace role cannot perform this action."},
+                )
+            request.state.support_actor = {
+                "workspace_id": auth_config.identity.workspace_id,
+                "runner_id": auth_config.identity.runner_id,
+                "subject": claims["sub"],
+                "role": claims["role"],
+                "jti": claims["jti"],
+            }
+        return await call_next(request)
+
     if host == "testclient":
         return await call_next(request)
-    allowed_hostnames = {"localhost", "127.0.0.1", "::1"}
     if request.url.hostname not in allowed_hostnames:
         return JSONResponse(
             status_code=403,
