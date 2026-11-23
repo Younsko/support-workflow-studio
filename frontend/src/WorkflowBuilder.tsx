@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownUp, ArrowLeft, ArrowRight, Bot, Check, ChevronDown,
   CircleAlert, ClipboardCheck, Clock3, FileCheck2, FileSearch,
-  GripVertical, Inbox, Languages, LockKeyhole, Minus, Plus, Search, Settings2, ShieldCheck,
+  GripVertical, History, Inbox, Languages, LockKeyhole, Minus, Plus, Search, Settings2, ShieldCheck,
   Save, Trash2, UserRoundCheck, Waypoints, X,
 } from 'lucide-react'
 import './WorkflowBuilder.css'
@@ -20,6 +20,7 @@ type WorkflowBundle = {
   draft: { definition: WorkflowDefinition; revision: number; updated_at: string } | null
   published: { definition: Omit<WorkflowDefinition, 'status'> & { status: 'published' }; published_at: string; content_hash: string }[]
 }
+type PublishedVersion = WorkflowBundle['published'][number]
 
 type Props = { locale?: WorkflowBuilderLocale; onLocaleChange?: (locale: WorkflowBuilderLocale) => void; onOpenConnections?: () => void; connectionsRevision?: number }
 type ConnectionBindings = {
@@ -53,6 +54,15 @@ const copy = {
     configure: 'Configure', jiraConnected: 'Jira configured', jiraMissing: 'Jira setup needed',
     knowledgeConnected: 'Knowledge ready', knowledgeDemo: 'Demo knowledge', knowledgeMissing: 'Knowledge setup needed',
     modelConfigured: 'Settings saved · connection not tested', modelDemo: 'Synthetic demo', modelMissing: 'Model setup needed',
+    history: 'History', publishedHistory: 'Published versions', noPublishedVersions: 'No published versions yet.',
+    version: 'Version', publishedAt: 'Published', contentHash: 'Content hash', latestVersion: 'Latest version',
+    forkLatest: 'Fork latest as draft', forking: 'Creating draft…', historyLoading: 'Loading published versions…',
+    historyLoadError: 'Could not load published versions. Try again.', closeHistory: 'Close version history',
+    forkConfirm: 'Create a new editable draft from the latest published version? Unsaved editor changes will be replaced.',
+    forkCreated: 'A new draft was created from the latest published version.',
+    draftAlreadyExists: 'A draft already exists on the server. Reload the workflow before continuing to avoid overwriting it.',
+    forkFailed: 'Could not create a draft from the latest published version.',
+    executionDisclosure: 'Published definitions are immutable snapshots. They do not execute tickets in this local prototype.',
   },
   fr: {
     eyebrow: 'STUDIO DE WORKFLOWS', title: 'Entrée du support', crumb: 'Workflows', draft: 'Brouillon · local',
@@ -79,6 +89,15 @@ const copy = {
     configure: 'Configurer', jiraConnected: 'Jira configuré', jiraMissing: 'Jira à configurer',
     knowledgeConnected: 'Documentation prête', knowledgeDemo: 'Documentation démo', knowledgeMissing: 'Documentation à configurer',
     modelConfigured: 'Paramètres enregistrés · connexion non testée', modelDemo: 'Démo synthétique', modelMissing: 'Modèle à configurer',
+    history: 'Historique', publishedHistory: 'Versions publiées', noPublishedVersions: 'Aucune version publiée pour le moment.',
+    version: 'Version', publishedAt: 'Publiée', contentHash: 'Empreinte du contenu', latestVersion: 'Dernière version',
+    forkLatest: 'Créer un brouillon depuis la dernière version', forking: 'Création du brouillon…', historyLoading: 'Chargement des versions publiées…',
+    historyLoadError: 'Impossible de charger les versions publiées. Réessayez.', closeHistory: 'Fermer l’historique des versions',
+    forkConfirm: 'Créer un brouillon modifiable depuis la dernière version publiée ? Les modifications non enregistrées seront remplacées.',
+    forkCreated: 'Un nouveau brouillon a été créé depuis la dernière version publiée.',
+    draftAlreadyExists: 'Un brouillon existe déjà sur le serveur. Rechargez le workflow avant de continuer pour éviter de l’écraser.',
+    forkFailed: 'Impossible de créer un brouillon depuis la dernière version publiée.',
+    executionDisclosure: 'Les versions publiées sont des instantanés immuables. Elles n’exécutent pas de tickets dans ce prototype local.',
   },
 } as const
 
@@ -197,6 +216,12 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
   const [saveState, setSaveState] = useState<'local' | 'saved' | 'saving' | 'publishing' | 'error'>('local')
   const [saveMessage, setSaveMessage] = useState('')
   const [bindings, setBindings] = useState<ConnectionBindings | null>(null)
+  const [publishedHistory, setPublishedHistory] = useState<PublishedVersion[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const [historyNotice, setHistoryNotice] = useState('')
+  const [forking, setForking] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const copyRef = useRef(t)
   const localeRef = useRef(locale)
@@ -210,6 +235,15 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     }, {} as Record<NodeKind, { title: string; subtitle: string }>)
     setNodes((current) => current.map((node) => node.localeGenerated ? { ...node, ...translated[node.kind] } : node))
   }, [locale])
+
+  useEffect(() => {
+    if (!historyOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHistoryOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [historyOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -255,7 +289,10 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
         if (response.status === 404) return
         if (!response.ok) throw new Error('Could not load the saved workflow.')
         const bundle = await response.json() as WorkflowBundle
-        if (!cancelled) setHasPublishedVersion(bundle.published.length > 0)
+        if (!cancelled) {
+          setHasPublishedVersion(bundle.published.length > 0)
+          setPublishedHistory(bundle.published)
+        }
         if (!cancelled && bundle.draft) {
           if (!isEditableLinear(bundle.draft.definition)) {
             setUnsupportedGraph(true)
@@ -466,6 +503,73 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     canvasRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
 
+  async function openHistory() {
+    setHistoryOpen(true)
+    setHistoryLoading(true)
+    setHistoryError('')
+    setHistoryNotice('')
+    try {
+      const response = await fetch(`/api/v1/workflows/${workflowId}`)
+      if (!response.ok) throw new Error(t.historyLoadError)
+      const bundle = await response.json() as WorkflowBundle
+      setPublishedHistory(bundle.published)
+      setHasPublishedVersion(bundle.published.length > 0)
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : t.historyLoadError)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  async function forkLatestPublished() {
+    if (publishedHistory.length === 0 || forking) return
+    if ((saveState === 'local' || saveState === 'error') && !window.confirm(t.forkConfirm)) return
+    setForking(true)
+    setHistoryError('')
+    setHistoryNotice('')
+    try {
+      const response = await fetch(`/api/v1/workflows/${workflowId}/fork`, { method: 'POST' })
+      const result = await response.json().catch(() => ({})) as {
+        definition?: WorkflowDefinition; revision?: number
+        detail?: string | { code?: string; message?: string; revision?: number }
+      }
+      if (response.status === 409) {
+        setHistoryError(typeof result.detail === 'object' && result.detail?.code === 'draft_already_exists'
+          ? t.draftAlreadyExists
+          : typeof result.detail === 'object' ? result.detail?.message || t.forkFailed : result.detail || t.forkFailed)
+        const currentResponse = await fetch(`/api/v1/workflows/${workflowId}`)
+        if (currentResponse.ok) {
+          const currentBundle = await currentResponse.json() as WorkflowBundle
+          setPublishedHistory(currentBundle.published)
+          setHasPublishedVersion(currentBundle.published.length > 0)
+        }
+        return
+      }
+      if (!response.ok || !result.definition || typeof result.revision !== 'number') {
+        throw new Error(typeof result.detail === 'string' ? result.detail : result.detail?.message || t.forkFailed)
+      }
+      const latestVersion = publishedHistory[0]?.definition.version
+      if (latestVersion !== undefined && result.definition.version <= latestVersion) {
+        throw new Error(t.forkFailed)
+      }
+      const restored = fromDefinition(result.definition)
+      if (restored.length === 0) throw new Error(t.forkFailed)
+      setNodes(restored)
+      setSelectedId(restored.find((node) => node.kind === 'agent')?.id ?? restored[0].id)
+      setWorkflowVersion(result.definition.version)
+      setDraftRevision(result.revision)
+      setUnsupportedGraph(false)
+      setSaveState('saved')
+      setSaveMessage(t.saved)
+      setHistoryNotice(t.forkCreated)
+      setHistoryOpen(false)
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : t.forkFailed)
+    } finally {
+      setForking(false)
+    }
+  }
+
   return (
     <section className="sws-builder" lang={locale} aria-label={t.title}>
       <header className="sws-topbar">
@@ -487,6 +591,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
           <div className="sws-tabs" role="tablist" aria-label={t.title}>
             <button className="active" type="button" role="tab" aria-selected="true"><Waypoints size={14} />{t.workflowTab}</button>
             <button type="button" role="tab" aria-selected="false" disabled title={t.localNotice}><Clock3 size={14} />{t.runTab}</button>
+            <button type="button" role="tab" aria-selected="false" aria-haspopup="dialog" onClick={() => void openHistory()}><History size={14} />{t.history}</button>
             <button type="button" role="tab" aria-selected="false" onClick={onOpenConnections}><Settings2 size={14} />{t.connections}</button>
           </div>
           <div className="sws-connection-status" role="status">
@@ -568,6 +673,28 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
           </div> : <div className="sws-empty-inspector">{t.selectNode}</div>}
         </aside>
       </div>
+
+      {historyNotice && <div className="sws-history-feedback" role="status" aria-live="polite">{historyNotice}</div>}
+
+      {historyOpen && <div className="sws-history-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setHistoryOpen(false) }}>
+        <section className="sws-history-dialog" role="dialog" aria-modal="true" aria-labelledby="sws-history-title" aria-describedby="sws-history-disclosure">
+          <header className="sws-history-header"><div><p className="sws-eyebrow">{t.workflowTab}</p><h2 id="sws-history-title">{t.publishedHistory}</h2></div><button type="button" autoFocus className="sws-history-close" aria-label={t.closeHistory} onClick={() => setHistoryOpen(false)}><X size={17} /></button></header>
+          <p id="sws-history-disclosure" className="sws-history-disclosure"><LockKeyhole size={14} />{t.executionDisclosure}</p>
+          {historyError && <div className="sws-history-error" role="alert">{historyError}</div>}
+          <div className="sws-history-list" aria-live="polite">
+            {historyLoading ? <p className="sws-history-empty" role="status">{t.historyLoading}</p> : publishedHistory.length === 0
+              ? <p className="sws-history-empty">{t.noPublishedVersions}</p>
+              : publishedHistory.map((item, index) => <article className="sws-history-version" key={`${item.definition.version}-${item.content_hash}`}>
+                <div className="sws-history-version-heading"><h3>{t.version} {item.definition.version}</h3>{index === 0 && <span>{t.latestVersion}</span>}</div>
+                <dl>
+                  <div><dt>{t.publishedAt}</dt><dd><time dateTime={item.published_at}>{new Date(item.published_at).toLocaleString(locale === 'fr' ? 'fr-FR' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</time></dd></div>
+                  <div><dt>{t.contentHash}</dt><dd><code title={item.content_hash}>{item.content_hash}</code></dd></div>
+                </dl>
+              </article>)}
+          </div>
+          <footer className="sws-history-footer"><button type="button" className="sws-history-secondary" onClick={() => setHistoryOpen(false)}>{t.close}</button><button type="button" className="sws-history-primary" disabled={publishedHistory.length === 0 || forking || historyLoading} onClick={() => void forkLatestPublished()}>{forking ? t.forking : t.forkLatest}</button></footer>
+        </section>
+      </div>}
 
       {showValidation && <div className={`sws-validation-toast ${validation}`} role="status" aria-live="polite">
         <span className="sws-validation-icon">{validation === 'valid' ? <ClipboardCheck size={18} /> : <CircleAlert size={18} />}</span>
