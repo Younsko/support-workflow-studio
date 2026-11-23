@@ -21,7 +21,7 @@ def store() -> PostgresStore:
     with value._connect() as connection:
         connection.execute(
             """TRUNCATE TABLE cases, runs, published_run_claims,
-                workflow_execution_steps, run_event_outbox, run_events,
+                workflow_execution_steps, ticket_reply_claims, run_event_outbox, run_events,
                 monitor_state, runner_identity RESTART IDENTITY CASCADE"""
         )
     return value
@@ -93,6 +93,37 @@ def test_postgres_store_identity_binding_rejects_cross_workspace_reuse(
 
     with pytest.raises(RuntimeError, match="another workspace runner"):
         store.bind_runner_identity("b" * 32, runner_id)
+
+
+def test_postgres_ticket_reply_claim_serializes_workers_and_replays_success(
+    store: PostgresStore,
+) -> None:
+    now = datetime.now(UTC)
+    args = {
+        "run_id": "RUN-PG-REPLY123",
+        "case_id": "JSM-PG-123",
+        "request_fingerprint": "d" * 64,
+        "now": now,
+    }
+
+    def claim(_index: int) -> str:
+        result = PostgresStore(store.dsn).claim_ticket_reply(**args)
+        return str(result["state"])
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        states = list(pool.map(claim, range(16)))
+
+    assert states.count("acquired") == 1
+    assert states.count("unknown") == 15
+    store.complete_ticket_reply(
+        run_id=args["run_id"],
+        request_fingerprint=args["request_fingerprint"],
+        comment_id="pg-comment-123",
+    )
+    assert store.claim_ticket_reply(**args) == {
+        "state": "published",
+        "comment_id": "pg-comment-123",
+    }
 
 
 def test_configured_store_selects_postgres_when_url_is_set(

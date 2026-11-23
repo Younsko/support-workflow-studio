@@ -417,6 +417,21 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch, tmp_pat
     assert sent.status_code == 200
     assert sent.json()["public"] is True
     assert published and published[0][0] == "DEMO-81"
+    from app import main
+
+    stale_worker_copy = main.RUNS[run["id"]].model_copy(
+        update={
+            "ticket_comment_published": False,
+            "ticket_comment_id": None,
+            "ticket_comment_outcome": "not_started",
+        }
+    )
+    main.RUNS[run["id"]] = stale_worker_copy
+    replayed = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert replayed.status_code == 200
+    assert replayed.json()["comment_id"] == "synthetic-comment-1"
+    assert len(published) == 1
+    assert main.RUNS[run["id"]].ticket_comment_published is True
     events = client.get(f"/api/workflows/{run['id']}/events").json()
     assert [event["event_type"] for event in events] == [
         "workflow.started",

@@ -62,6 +62,56 @@ def test_local_store_is_immutably_bound_to_one_workspace_runner(tmp_path) -> Non
         store.bind_runner_identity("workspace", runner_id)
 
 
+def test_ticket_reply_claim_allows_one_attempt_and_recovers_published_result(tmp_path) -> None:
+    database = tmp_path / "state.sqlite3"
+    store = LocalStore(database)
+    now = datetime.now(UTC)
+    args = {
+        "run_id": "RUN-REPLY123",
+        "case_id": "JSM-123",
+        "request_fingerprint": "a" * 64,
+        "now": now,
+    }
+
+    assert store.claim_ticket_reply(**args) == {"state": "acquired"}
+    assert LocalStore(database).claim_ticket_reply(**args) == {"state": "unknown"}
+
+    store.complete_ticket_reply(
+        run_id=args["run_id"],
+        request_fingerprint=args["request_fingerprint"],
+        comment_id="comment-123",
+    )
+    assert store.claim_ticket_reply(**args) == {
+        "state": "published",
+        "comment_id": "comment-123",
+    }
+
+    with pytest.raises(ValueError, match="different Jira reply claim"):
+        store.claim_ticket_reply(**{**args, "request_fingerprint": "b" * 64})
+
+
+def test_ticket_reply_claim_serializes_competing_processes(tmp_path) -> None:
+    database = tmp_path / "state.sqlite3"
+    now = datetime.now(UTC)
+
+    def claim(_index: int) -> str:
+        result = LocalStore(database).claim_ticket_reply(
+            run_id="RUN-RACE123",
+            case_id="JSM-456",
+            request_fingerprint="c" * 64,
+            now=now,
+        )
+        return str(result["state"])
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        states = list(pool.map(claim, range(16)))
+
+    assert states.count("acquired") == 1
+    assert states.count("unknown") == 15
+
+
 def test_runner_identity_is_bound_at_application_startup(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

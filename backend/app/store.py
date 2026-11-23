@@ -112,6 +112,12 @@ class WorkflowStateStore(Protocol):
         self, idempotency_key: str, lease_owner: str, now: datetime,
         *, lease_seconds: int = 3600,
     ) -> bool: ...
+    def claim_ticket_reply(
+        self, *, run_id: str, case_id: str, request_fingerprint: str, now: datetime
+    ) -> dict[str, object]: ...
+    def complete_ticket_reply(
+        self, *, run_id: str, request_fingerprint: str, comment_id: str
+    ) -> None: ...
     def record_execution_step(
         self,
         *,
@@ -246,6 +252,16 @@ class LocalStore:
             )
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS monitor_state (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS ticket_reply_claims (
+                    run_id TEXT PRIMARY KEY,
+                    case_id TEXT NOT NULL,
+                    request_fingerprint TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(state IN ('attempting', 'published')),
+                    attempted_at TEXT NOT NULL,
+                    comment_id TEXT
+                )"""
             )
             connection.commit()
 
@@ -390,6 +406,83 @@ class LocalStore:
             )
             connection.commit()
         return cursor.rowcount == 1
+
+    def claim_ticket_reply(
+        self, *, run_id: str, case_id: str, request_fingerprint: str, now: datetime
+    ) -> dict[str, object]:
+        """Atomically permit one external reply attempt for the approved draft."""
+        if not isinstance(run_id, str) or not _SAFE_RUN_ID.fullmatch(run_id):
+            raise ValueError("run_id must be a short stable identifier.")
+        if not isinstance(case_id, str) or not _SAFE_CASE_ID.fullmatch(case_id):
+            raise ValueError("case_id must be a short stable identifier.")
+        if not isinstance(request_fingerprint, str) or not re.fullmatch(
+            r"[a-f0-9]{64}", request_fingerprint
+        ):
+            raise ValueError("request_fingerprint must be a SHA-256 digest.")
+        attempted_at = now.astimezone(UTC).isoformat()
+        with closing(self._connect()) as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                existing = connection.execute(
+                    "SELECT case_id, request_fingerprint, state, comment_id FROM ticket_reply_claims WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()
+                if existing is None:
+                    connection.execute(
+                        """INSERT INTO ticket_reply_claims(
+                               run_id, case_id, request_fingerprint, state, attempted_at
+                           ) VALUES (?, ?, ?, 'attempting', ?)""",
+                        (run_id, case_id, request_fingerprint, attempted_at),
+                    )
+                    connection.commit()
+                    return {"state": "acquired"}
+                if (
+                    existing["case_id"] != case_id
+                    or existing["request_fingerprint"] != request_fingerprint
+                ):
+                    raise ValueError("This run already has a different Jira reply claim.")
+                connection.commit()
+                if existing["state"] == "published":
+                    return {"state": "published", "comment_id": existing["comment_id"]}
+                return {"state": "unknown"}
+            except Exception:
+                connection.rollback()
+                raise
+
+    def complete_ticket_reply(
+        self, *, run_id: str, request_fingerprint: str, comment_id: str
+    ) -> None:
+        if not isinstance(run_id, str) or not _SAFE_RUN_ID.fullmatch(run_id):
+            raise ValueError("run_id must be a short stable identifier.")
+        if not isinstance(request_fingerprint, str) or not re.fullmatch(
+            r"[a-f0-9]{64}", request_fingerprint
+        ):
+            raise ValueError("request_fingerprint must be a SHA-256 digest.")
+        if not isinstance(comment_id, str) or not _SAFE_RUN_ID.fullmatch(comment_id):
+            raise ValueError("comment_id must be a non-empty identifier of at most 128 characters.")
+        with closing(self._connect()) as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """UPDATE ticket_reply_claims SET state='published', comment_id=?
+                       WHERE run_id=? AND request_fingerprint=? AND state='attempting'""",
+                    (comment_id, run_id, request_fingerprint),
+                )
+                if cursor.rowcount != 1:
+                    existing = connection.execute(
+                        "SELECT state, comment_id FROM ticket_reply_claims WHERE run_id=? AND request_fingerprint=?",
+                        (run_id, request_fingerprint),
+                    ).fetchone()
+                    if (
+                        existing is None
+                        or existing["state"] != "published"
+                        or existing["comment_id"] != comment_id
+                    ):
+                        raise ValueError("Jira reply claim is missing or no longer writable.")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def record_execution_step(
         self,

@@ -1954,8 +1954,9 @@ async def _publish_ticket_reply_locked(
             status_code=409,
             detail="This case is not linked to a Jira Service Management request",
         )
+    adapter = create_itsm_adapter("jira-service-management")
     try:
-        latest_details = await create_itsm_adapter("jira-service-management").get_request_details(case.external_key)
+        latest_details = await adapter.get_request_details(case.external_key)
     except ITSMConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMRequestError as exc:
@@ -1970,9 +1971,49 @@ async def _publish_ticket_reply_locked(
             runner_auth_config, runner_session_token
         )
         actor_metadata = {**(actor_metadata or {}), "actor_role": current_role}
+    store = STATE_STORE or configured_store()
+    draft_fingerprint = hashlib.sha256(result.draft.encode("utf-8")).hexdigest()
+    request_fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "run_id": result.id,
+                "case_id": result.case_id,
+                "external_key": case.external_key,
+                "approval_version": result.approval_version,
+                "draft_fingerprint": draft_fingerprint,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    try:
+        reply_claim = store.claim_ticket_reply(
+            run_id=result.id,
+            case_id=result.case_id,
+            request_fingerprint=request_fingerprint,
+            now=datetime.now(UTC),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="This run already has a different Jira reply attempt.") from exc
+    if reply_claim["state"] == "published":
+        result.ticket_comment_published = True
+        result.ticket_comment_id = str(reply_claim.get("comment_id") or "") or None
+        result.ticket_comment_outcome = "published"
+        store.save_run(result)
+        return {
+            "published": True,
+            "comment_id": result.ticket_comment_id,
+            "public": True,
+        }
+    if reply_claim["state"] != "acquired":
+        result.ticket_comment_outcome = "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail="A Jira reply attempt already exists for this run. Check the ticket manually before taking further action.",
+        )
     # An interrupted request is ambiguous. Keep this run closed to retries.
     result.ticket_comment_outcome = "unknown"
-    _save_run(
+    store.save_run(
         result,
         audit_event=(
             result.id,
@@ -1988,22 +2029,22 @@ async def _publish_ticket_reply_locked(
         ),
     )
     try:
-        posted = await create_itsm_adapter("jira-service-management").publish_public_reply(case.external_key, result.draft)
+        posted = await adapter.publish_public_reply(case.external_key, result.draft)
     except ITSMConfigurationError as exc:
-        result.ticket_comment_outcome = "failed"
-        _save_run(
+        result.ticket_comment_outcome = "unknown"
+        store.save_run(
             result,
             audit_event=(
                 result.id,
                 result.case_id,
-                "publish.failed",
-                {"outcome": "failed", **(actor_metadata or {})},
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
             ),
         )
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail="Jira reply outcome could not be confirmed; inspect the ticket before retrying.") from exc
     except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
-        _save_run(
+        store.save_run(
             result,
             audit_event=(
                 result.id,
@@ -2014,21 +2055,40 @@ async def _publish_ticket_reply_locked(
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ITSMRequestError as exc:
-        result.ticket_comment_outcome = "failed"
-        _save_run(
+        result.ticket_comment_outcome = "unknown"
+        store.save_run(
             result,
             audit_event=(
                 result.id,
                 result.case_id,
-                "publish.failed",
-                {"outcome": "failed", **(actor_metadata or {})},
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
             ),
         )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail="Jira reply outcome could not be confirmed; inspect the ticket before retrying.") from exc
+    raw_comment_id = posted.get("id")
+    comment_id = str(raw_comment_id).strip() if isinstance(raw_comment_id, (str, int)) else ""
+    if not comment_id:
+        result.ticket_comment_outcome = "unknown"
+        store.save_run(
+            result,
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
+            ),
+        )
+        raise HTTPException(status_code=502, detail="Jira may have accepted the reply but returned no comment ID; inspect the ticket manually.")
+    store.complete_ticket_reply(
+        run_id=result.id,
+        request_fingerprint=request_fingerprint,
+        comment_id=comment_id,
+    )
     result.ticket_comment_published = True
-    result.ticket_comment_id = posted.get("id")
+    result.ticket_comment_id = comment_id
     result.ticket_comment_outcome = "published"
-    _save_run(
+    store.save_run(
         result,
         audit_event=(
             result.id,
