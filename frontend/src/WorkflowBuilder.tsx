@@ -6,6 +6,7 @@ import {
   Save, Trash2, UserRoundCheck, Waypoints, X,
 } from 'lucide-react'
 import './WorkflowBuilder.css'
+import { apiFetch } from './runnerAuth'
 
 export type WorkflowBuilderLocale = 'en' | 'fr'
 
@@ -256,7 +257,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     async function loadBindings() {
       try {
         const [integrationResponse, healthResponse, setupResponse] = await Promise.all([
-          fetch('/api/integrations/status'), fetch('/api/health'), fetch('/api/setup'),
+          apiFetch('/api/integrations/status'), apiFetch('/api/health'), apiFetch('/api/setup'),
         ])
         if (!integrationResponse.ok || !healthResponse.ok || !setupResponse.ok) throw new Error('Setup state is unavailable.')
         const [integrations, health, setup] = await Promise.all([
@@ -291,7 +292,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     let cancelled = false
     async function loadWorkflow() {
       try {
-        const response = await fetch(`/api/v1/workflows/${workflowId}`)
+        const response = await apiFetch(`/api/v1/workflows/${workflowId}`)
         if (response.status === 404) return
         if (!response.ok) throw new Error('Could not load the saved workflow.')
         const bundle = await response.json() as WorkflowBundle
@@ -361,7 +362,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     let finalErrors = errors
     if (errors.length === 0) {
       try {
-        const response = await fetch(`/api/v1/workflows/${workflowId}/validate`, {
+        const response = await apiFetch(`/api/v1/workflows/${workflowId}/validate`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(toDefinition(nodes, workflowVersion, bindings)),
         })
@@ -388,7 +389,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     let currentRevision = draftRevision
     try {
       if (currentRevision === null && hasPublishedVersion) {
-        const forkResponse = await fetch(`/api/v1/workflows/${workflowId}/fork`, { method: 'POST' })
+        const forkResponse = await apiFetch(`/api/v1/workflows/${workflowId}/fork`, { method: 'POST' })
         const fork = await forkResponse.json().catch(() => ({})) as { definition?: WorkflowDefinition; revision?: number; created?: boolean; detail?: string | { code?: string; message?: string; revision?: number } }
         if (forkResponse.status === 409 && typeof fork.detail === 'object' && fork.detail?.code === 'draft_already_exists') {
           setSaveState('error')
@@ -405,7 +406,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
         setDraftRevision(fork.revision)
       }
       const isNew = currentRevision === null
-      const response = await fetch(isNew ? '/api/v1/workflows' : `/api/v1/workflows/${workflowId}/draft`, {
+      const response = await apiFetch(isNew ? '/api/v1/workflows' : `/api/v1/workflows/${workflowId}/draft`, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ definition, ...(isNew ? {} : { expected_revision: currentRevision }) }),
@@ -433,7 +434,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     if (!persisted) return
     setSaveState('publishing')
     try {
-      const response = await fetch(`/api/v1/workflows/${workflowId}/publish`, {
+      const response = await apiFetch(`/api/v1/workflows/${workflowId}/publish`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ definition: persisted.definition, expected_revision: persisted.revision }),
       })
@@ -535,7 +536,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     setHistoryError('')
     setHistoryNotice('')
     try {
-      const response = await fetch(`/api/v1/workflows/${workflowId}`)
+      const response = await apiFetch(`/api/v1/workflows/${workflowId}`)
       if (!response.ok) throw new Error(t.historyLoadError)
       const bundle = await response.json() as WorkflowBundle
       setPublishedHistory(bundle.published)
@@ -554,7 +555,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
     setHistoryError('')
     setHistoryNotice('')
     try {
-      const response = await fetch(`/api/v1/workflows/${workflowId}/fork`, { method: 'POST' })
+      const response = await apiFetch(`/api/v1/workflows/${workflowId}/fork`, { method: 'POST' })
       const result = await response.json().catch(() => ({})) as {
         definition?: WorkflowDefinition; revision?: number
         detail?: string | { code?: string; message?: string; revision?: number }
@@ -563,7 +564,7 @@ export default function WorkflowBuilder({ locale: initialLocale = 'en', onLocale
         setHistoryError(typeof result.detail === 'object' && result.detail?.code === 'draft_already_exists'
           ? t.draftAlreadyExists
           : typeof result.detail === 'object' ? result.detail?.message || t.forkFailed : result.detail || t.forkFailed)
-        const currentResponse = await fetch(`/api/v1/workflows/${workflowId}`)
+        const currentResponse = await apiFetch(`/api/v1/workflows/${workflowId}`)
         if (currentResponse.ok) {
           const currentBundle = await currentResponse.json() as WorkflowBundle
           setPublishedHistory(currentBundle.published)

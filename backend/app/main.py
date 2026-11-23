@@ -774,6 +774,8 @@ async def require_local_client(request: Request, call_next) -> Response:
                 status_code=403,
                 content={"detail": "Remote runner requests require HTTPS."},
             )
+        if request.method == "GET" and request.url.path == "/api/auth/config":
+            return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
         if request.url.path.startswith("/api/"):
@@ -857,10 +859,50 @@ async def require_local_client(request: Request, call_next) -> Response:
     return await call_next(request)
 
 
+@app.middleware("http")
+async def secure_browser_response(request: Request, call_next) -> Response:
+    """Protect the browser token surface and avoid caching support app HTML."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self' https:; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self' data:; "
+        "connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:*",
+    )
+    if request.url.path in {"/", "/index.html", "/api/auth/config"}:
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 CASES: dict[str, CaseRecord] = {case.id: case for case in demo_cases()}
 RUNS: dict[str, WorkflowResult] = {}
 PUBLISH_LOCKS: dict[str, asyncio.Lock] = {}
 DECISION_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+@app.get("/api/auth/config")
+async def support_auth_config() -> dict[str, object]:
+    try:
+        auth_config = RunnerAuthConfig.from_env()
+    except RunnerAuthConfigurationError as exc:
+        raise HTTPException(
+            status_code=503, detail="Runner authentication is not configured safely."
+        ) from exc
+    if auth_config is None:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "workspace_id": auth_config.identity.workspace_id,
+        "runner_id": auth_config.identity.runner_id,
+        "control_plane_api_url": auth_config.control_plane_api_url,
+    }
 
 
 @app.get("/api/health")

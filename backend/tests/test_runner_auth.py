@@ -25,6 +25,7 @@ def _configure_runner_auth(monkeypatch: pytest.MonkeyPatch) -> tuple[str, str]:
         "SUPPORT_RUNNER_SESSION_JWKS_URI",
         "https://control.example/.well-known/runner-session-jwks.json",
     )
+    monkeypatch.setenv("SUPPORT_CONTROL_PLANE_API_URL", "https://control.example")
     monkeypatch.setenv("SUPPORT_RUNNER_ALLOWED_HOSTS", "testserver")
     monkeypatch.setenv("SUPPORT_RUNNER_ALLOWED_ORIGINS", "http://localhost:5173")
     monkeypatch.setenv("SUPPORT_RUNNER_AUDIT_HASH_KEY", "test-audit-hash-key-that-is-long-enough")
@@ -35,6 +36,18 @@ def test_runner_auth_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv("SUPPORT_RUNNER_AUTH_ENABLED", raising=False)
 
     assert RunnerAuthConfig.from_env() is None
+
+
+def test_support_app_sets_browser_security_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SUPPORT_RUNNER_AUTH_ENABLED", raising=False)
+    with TestClient(main.app) as client:
+        response = client.get("/health/live")
+
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "script-src 'self'" in response.headers["content-security-policy"]
 
 
 def test_runner_auth_configuration_requires_identity_and_explicit_origins(
@@ -83,6 +96,15 @@ def test_runner_auth_requires_a_stable_audit_pseudonym_key(
 
     monkeypatch.delenv("SUPPORT_RUNNER_AUDIT_HASH_KEY")
     with pytest.raises(RunnerAuthConfigurationError, match="at least 32 UTF-8 bytes"):
+        RunnerAuthConfig.from_env()
+
+
+def test_runner_auth_rejects_remote_http_control_plane_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_runner_auth(monkeypatch)
+    monkeypatch.setenv("SUPPORT_CONTROL_PLANE_API_URL", "http://control.example")
+    with pytest.raises(RunnerAuthConfigurationError, match="SUPPORT_CONTROL_PLANE_API_URL"):
         RunnerAuthConfig.from_env()
 
 
@@ -141,6 +163,15 @@ def test_authenticated_runner_routes_reject_missing_tokens_and_enforce_roles(
     monkeypatch.setattr(runner_auth, "verify_workspace_session", verify)
 
     with TestClient(main.app) as client:
+        public_config = client.get("/api/auth/config")
+        assert public_config.status_code == 200
+        assert public_config.json() == {
+            "enabled": True,
+            "workspace_id": workspace_id,
+            "runner_id": runner_id,
+            "control_plane_api_url": "https://control.example",
+        }
+        assert "audit_hash_key" not in public_config.text
         assert client.get("/api/cases").status_code == 401
         assert client.get(
             "/api/cases", headers={"Authorization": "Bearer invalid"}

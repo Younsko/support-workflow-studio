@@ -9,6 +9,7 @@ workspace metadata only; it is not yet the UI's auth server or a runner relay.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import secrets
@@ -17,6 +18,7 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import (
     Depends,
@@ -27,6 +29,7 @@ from fastapi import (
     Request,
     Response,
 )
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -123,6 +126,39 @@ class RunnerEnrollmentCreate(BaseModel):
         return value
 
 
+def _configured_browser_origins() -> list[str]:
+    origins: set[str] = set()
+    raw_origins = os.getenv("CONTROL_PLANE_ALLOWED_ORIGINS", "")
+    for raw in raw_origins.split(","):
+        value = raw.strip()
+        if not value:
+            continue
+        parsed = urlsplit(value)
+        try:
+            loopback = bool(parsed.hostname) and (
+                ipaddress.ip_address(parsed.hostname).is_loopback
+                if parsed.hostname != "localhost"
+                else True
+            )
+        except ValueError:
+            loopback = False
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+        ):
+            raise RuntimeError(
+                "CONTROL_PLANE_ALLOWED_ORIGINS must contain exact HTTPS origins, or HTTP loopback origins for local development."
+            )
+        origins.add(f"{parsed.scheme.lower()}://{parsed.netloc.lower()}")
+    return sorted(origins)
+
+
 def _slug_from_name(name: str) -> str:
     normalized = (
         unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
@@ -185,6 +221,14 @@ def create_control_plane_app(
     )
     app.state.control_plane_store = store
     app.state.store_lock = threading.Lock()
+    browser_origins = _configured_browser_origins()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=browser_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Runner-Token"],
+    )
 
     @app.exception_handler(WorkspaceNotFound)
     async def workspace_missing(_: Request, __: WorkspaceNotFound) -> Response:

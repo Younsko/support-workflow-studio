@@ -31,6 +31,7 @@ class RunnerAuthConfig:
     identity: RunnerIdentity
     issuer: str
     jwks_uri: str
+    control_plane_api_url: str
     allowed_hosts: frozenset[str]
     allowed_origins: frozenset[str]
     audit_hash_key: bytes
@@ -54,6 +55,8 @@ class RunnerAuthConfig:
         jwks_uri = os.getenv("SUPPORT_RUNNER_SESSION_JWKS_URI", "").strip()
         _require_https_url(issuer, "SUPPORT_RUNNER_SESSION_ISSUER")
         _require_https_url(jwks_uri, "SUPPORT_RUNNER_SESSION_JWKS_URI")
+        control_plane_api_url = os.getenv("SUPPORT_CONTROL_PLANE_API_URL", "").strip()
+        _require_api_base_url(control_plane_api_url)
 
         raw_hosts = os.getenv("SUPPORT_RUNNER_ALLOWED_HOSTS", "")
         hosts = frozenset(host.strip().lower() for host in raw_hosts.split(",") if host.strip())
@@ -82,6 +85,7 @@ class RunnerAuthConfig:
             identity=identity,
             issuer=issuer,
             jwks_uri=jwks_uri,
+            control_plane_api_url=control_plane_api_url.rstrip("/"),
             allowed_hosts=hosts,
             allowed_origins=origins,
             audit_hash_key=audit_hash_secret.encode("utf-8"),
@@ -103,6 +107,30 @@ def _require_https_url(value: str, name: str) -> None:
         or parsed.fragment
     ):
         raise RunnerAuthConfigurationError(f"{name} must be a clean HTTPS URL.")
+
+
+def _require_api_base_url(value: str) -> None:
+    parsed = urlsplit(value)
+    try:
+        loopback = bool(parsed.hostname) and (
+            ipaddress.ip_address(parsed.hostname).is_loopback
+            if parsed.hostname != "localhost"
+            else True
+        )
+    except ValueError:
+        loopback = False
+    if (
+        not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+    ):
+        raise RunnerAuthConfigurationError(
+            "SUPPORT_CONTROL_PLANE_API_URL must be HTTPS, or HTTP on loopback, without a path or credentials."
+        )
 
 
 def _is_valid_host(value: str) -> bool:

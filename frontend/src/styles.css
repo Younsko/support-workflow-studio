@@ -430,3 +430,104 @@ h1 { font-family: 'Newsreader', Georgia, serif; font-size: 30px; line-height: 1;
 }
 @media (max-width: 700px) { .setup-grid { grid-template-columns: 1fr; } .setup-rules { grid-column: auto; } .setup-actions { flex-wrap: wrap; } .setup-actions > span { flex-basis: 100%; margin: 0 0 5px; } }
 @media (max-width: 760px) { .plan-review-panel { padding: 12px; } .plan-round-heading { flex-wrap: wrap; gap: 6px; } .plan-round-heading strong { margin-left: 0; } }
+/* Workspace sign-in for the opt-in authenticated runner path. */
+.runner-auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: #f4f6f3;
+  color: #172b26;
+}
+.runner-auth-card {
+  width: min(100%, 460px);
+  padding: 38px;
+  border: 1px solid #dce5df;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 20px 54px #17352a12;
+}
+.runner-auth-mark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #d9eadf;
+  color: #124b37;
+  font-weight: 750;
+}
+.runner-auth-eyebrow {
+  margin-top: 28px;
+  color: #61776c;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .14em;
+}
+.runner-auth-card h1 {
+  margin: 10px 0 8px;
+  color: #17342a;
+  font-size: clamp(25px, 5vw, 31px);
+  font-weight: 650;
+  letter-spacing: -.035em;
+  line-height: 1.13;
+}
+.runner-auth-card > p {
+  margin: 0;
+  color: #62756c;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.runner-auth-boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 23px 0;
+  padding: 13px;
+  border: 1px solid #e1eae3;
+  border-radius: 10px;
+  background: #f6faf7;
+  color: #436253;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.runner-auth-boundary svg { flex: 0 0 auto; color: #3b7659; }
+.runner-auth-error {
+  margin: 0 0 14px !important;
+  color: #9b403b !important;
+  font-size: 12px !important;
+}
+.runner-auth-submit {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #174e39;
+  border-radius: 9px;
+  background: #174e39;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.runner-auth-submit:hover { background: #236548; }
+.runner-auth-submit:focus-visible, .runner-auth-footer button:focus-visible {
+  outline: 3px solid #72a88d;
+  outline-offset: 2px;
+}
+.runner-auth-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 19px;
+  color: #718078;
+  font-size: 11px;
+}
+.runner-auth-footer button, .page-footer-account button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #245b43;
+  font: inherit;
+  cursor: pointer;
+}
+.page-footer-account { display: inline-flex; align-items: center; gap: 12px; }

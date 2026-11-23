@@ -10,6 +10,7 @@ import WorkflowBuilder from './WorkflowBuilder'
 import RunWorkflowMap from './RunWorkflowMap'
 import SetupPanel from './SetupPanel'
 import { translate, type AppLocale } from './i18n'
+import { apiFetch, bootstrapRunnerAuth, signInToRunner, signOutRunnerAuth, type RunnerAuthSnapshot } from './runnerAuth'
 
 type SupportCase = {
   id: string; title: string; requester: string; channel: string; created_at: string
@@ -48,7 +49,7 @@ type Integrations = { private_local_mode: boolean; itsm_provider: string; jira_c
 const API = '/api'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
+  const response = await apiFetch(`${API}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   })
@@ -68,6 +69,9 @@ const cleanBriefField = (value: string, maxLength = 160) => value
 
 export default function App() {
   const [locale, setLocale] = useState<AppLocale>(() => window.localStorage.getItem('support-workflow-locale') === 'fr' ? 'fr' : 'en')
+  const [runnerAuth, setRunnerAuth] = useState<{ status: 'loading' } | { status: 'ready'; snapshot: RunnerAuthSnapshot }>({ status: 'loading' })
+  const [authActionError, setAuthActionError] = useState('')
+  const appReady = runnerAuth.status === 'ready' && !runnerAuth.snapshot.error && (!runnerAuth.snapshot.enabled || runnerAuth.snapshot.authenticated)
   const tr = (value: string) => translate(locale, value)
   const [cases, setCases] = useState<SupportCase[]>([])
   const [selectedId, setSelectedId] = useState('SUP-4821')
@@ -111,6 +115,15 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
   useEffect(() => { window.localStorage.setItem('support-workflow-locale', locale) }, [locale])
 
   useEffect(() => {
+    let active = true
+    void bootstrapRunnerAuth().then((snapshot) => {
+      if (active) setRunnerAuth({ status: 'ready', snapshot })
+    })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!appReady) return
     Promise.all([api<SupportCase[]>('/cases'), api<Health>('/health'), api<Integrations>('/integrations/status'), api<WorkspaceMetrics>('/metrics'), api<ProductSignal[]>('/product-signals')])
       .then(([items, state, integrationState, metricState, signals]) => {
         setCases(items); setHealth(state); setIntegrations(integrationState); setMetrics(metricState)
@@ -118,14 +131,16 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
         setLastQueueSync(integrationState.jira_monitor.last_poll_at ? new Date(integrationState.jira_monitor.last_poll_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null)
       })
       .catch((reason: Error) => setError(reason.message))
-  }, [])
+  }, [appReady])
 
   useEffect(() => {
+    if (!appReady) return
     setRun(null)
     if (selectedId) api<Run>(`/workflows/latest/${selectedId}`).then(setRun).catch(() => undefined)
-  }, [selectedId])
+  }, [selectedId, appReady])
 
   useEffect(() => {
+    if (!appReady) return
     if (!run) { setRunAuditEvents([]); setRunAuditError(false); setRunAuditLoading(false); return }
     let cancelled = false
     setRunAuditLoading(true)
@@ -133,16 +148,17 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
       .then((events) => { if (!cancelled) { setRunAuditEvents(events); setRunAuditError(false); setRunAuditLoading(false) } })
       .catch(() => { if (!cancelled) { setRunAuditEvents([]); setRunAuditError(true); setRunAuditLoading(false) } })
     return () => { cancelled = true }
-  }, [run?.id, runAuditRefresh])
+  }, [run?.id, runAuditRefresh, appReady])
 
   useEffect(() => {
+    if (!appReady) return
     if (!run?.workflow_id) { setExecutionRecord(null); return }
     let cancelled = false
     api<ExecutionStep[]>(`/workflows/${encodeURIComponent(run.id)}/execution-steps`)
       .then((steps) => { if (!cancelled) setExecutionRecord({ runId: run.id, steps }) })
       .catch(() => { if (!cancelled) setExecutionRecord({ runId: run.id, steps: [] }) })
     return () => { cancelled = true }
-  }, [run?.id, run?.workflow_id])
+  }, [run?.id, run?.workflow_id, appReady])
 
   const filteredCases = useMemo(() => cases.filter((item) =>
     `${item.id} ${item.title} ${item.requester} ${item.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
@@ -274,6 +290,7 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
   }
 
   useEffect(() => {
+    if (!appReady) return
     if (!integrations?.jira_configured) return
     async function refreshMonitorState() {
       try {
@@ -287,7 +304,7 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
     }
     const interval = window.setInterval(() => { void refreshMonitorState() }, 15_000)
     return () => window.clearInterval(interval)
-  }, [integrations?.jira_configured])
+  }, [integrations?.jira_configured, appReady])
 
   async function publishTicketReply() {
     if (!run) return
@@ -299,6 +316,36 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
       void refreshMetrics()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Reply could not be published') }
     finally { setRunAuditRefresh((value) => value + 1); setDecisionBusy(false) }
+  }
+
+  if (runnerAuth.status === 'loading') {
+    return <main className="runner-auth-shell" lang={locale}><div className="runner-auth-card"><span className="runner-auth-mark">S</span><p>{locale === 'fr' ? 'Vérification de la connexion sécurisée…' : 'Checking secure workspace connection…'}</p></div></main>
+  }
+  if (runnerAuth.snapshot.error || (runnerAuth.snapshot.enabled && !runnerAuth.snapshot.authenticated)) {
+    const authError = authActionError || runnerAuth.snapshot.error
+    return <main className="runner-auth-shell" lang={locale}>
+      <section className="runner-auth-card">
+        <span className="runner-auth-mark">S</span>
+        <div className="runner-auth-eyebrow">SUPPORT WORKFLOW STUDIO</div>
+        <h1>{locale === 'fr' ? 'Connectez votre espace de support' : 'Connect your support workspace'}</h1>
+        <p>{locale === 'fr' ? 'Utilisez l’identité de votre organisation. Vos demandes restent sur le runner configuré.' : 'Sign in with your organization identity. Requests stay with the configured support runner.'}</p>
+        <div className="runner-auth-boundary">
+          <ShieldCheck size={17} />
+          <span>{locale === 'fr' ? 'L’accès au runner est limité à votre espace et à votre rôle.' : 'Runner access is scoped to your workspace and assigned role.'}</span>
+        </div>
+        {authError && <p className="runner-auth-error" role="alert">{authError}</p>}
+        {runnerAuth.snapshot.error
+          ? <button className="runner-auth-submit" onClick={() => window.location.reload()}>{locale === 'fr' ? 'Réessayer' : 'Retry connection'}</button>
+          : <button className="runner-auth-submit" onClick={() => {
+            setAuthActionError('')
+            void signInToRunner().catch((error: unknown) => setAuthActionError(error instanceof Error ? error.message : 'Sign-in could not be started.'))
+          }}>{locale === 'fr' ? 'Continuer avec mon organisation' : 'Continue with your organization'}</button>}
+        <div className="runner-auth-footer">
+          <button onClick={() => { const next = locale === 'fr' ? 'en' : 'fr'; setLocale(next) }}>{locale === 'fr' ? 'English' : 'Français'}</button>
+          <span>{locale === 'fr' ? 'Connexion OIDC sécurisée · PKCE' : 'Secure OIDC sign-in · PKCE'}</span>
+        </div>
+      </section>
+    </main>
   }
 
   return (
@@ -463,7 +510,7 @@ const jiraKnowledgeReady = selected?.source !== 'jira-service-management' || (
               </>}
             </section>
           </div>
-          <footer className="page-footer"><span><ShieldCheck size={14} />{integrations?.jira_configured ? tr('Jira Service Management connected · human-reviewed') : tr('Synthetic data · local prototype')}</span><span>Support Workflow Studio <span className="footer-separator">/</span> v0.1</span></footer>
+          <footer className="page-footer"><span><ShieldCheck size={14} />{integrations?.jira_configured ? tr('Jira Service Management connected · human-reviewed') : tr('Synthetic data · local prototype')}</span><span className="page-footer-account">{runnerAuth.snapshot.enabled && runnerAuth.snapshot.authenticated && <><span>{runnerAuth.snapshot.email} · {runnerAuth.snapshot.role}</span><button onClick={() => { signOutRunnerAuth(); setCases([]); setRun(null); setRunAuditEvents([]); setExecutionRecord(null); setMetrics(null); setProductSignals([]); setIntegrations(null); setDraft(''); setRunnerAuth({ status: 'ready', snapshot: { enabled: true, authenticated: false } }) }}>{locale === 'fr' ? 'Se déconnecter' : 'Sign out'}</button></>}<span>Support Workflow Studio <span className="footer-separator">/</span> v0.1</span></span></footer>
         </div>
       </main>
 

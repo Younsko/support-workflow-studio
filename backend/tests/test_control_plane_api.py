@@ -45,6 +45,42 @@ def test_public_auth_config_contains_only_browser_safe_oidc_values(monkeypatch) 
     assert "jwks" not in response.text.casefold()
 
 
+def test_control_plane_cors_requires_an_explicit_browser_origin(monkeypatch) -> None:
+    monkeypatch.setenv("CONTROL_PLANE_ALLOWED_ORIGINS", "https://support.example")
+    client = TestClient(create_control_plane_app())
+
+    allowed = client.options(
+        "/api/v1/workspaces/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/runners/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/session",
+        headers={
+            "Origin": "https://support.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    blocked = client.options(
+        "/api/v1/workspaces/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/runners/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/session",
+        headers={
+            "Origin": "https://unlisted.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://support.example"
+    assert blocked.status_code == 400
+    assert "access-control-allow-origin" not in blocked.headers
+
+
+@pytest.mark.parametrize("origin", ["*", "http://support.example", "https://support.example/path"])
+def test_control_plane_cors_rejects_wildcard_and_non_origin_values(
+    monkeypatch, origin: str
+) -> None:
+    monkeypatch.setenv("CONTROL_PLANE_ALLOWED_ORIGINS", origin)
+    with pytest.raises(RuntimeError, match="exact HTTPS origins"):
+        create_control_plane_app()
+
+
 def test_runner_session_is_workspace_and_runner_bound_and_non_cacheable(monkeypatch) -> None:
     jwt = pytest.importorskip("jwt")
     pytest.importorskip("cryptography.hazmat.primitives.serialization")

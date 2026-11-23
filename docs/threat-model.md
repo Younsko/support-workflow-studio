@@ -4,7 +4,7 @@
 
 This model covers the current single-operator local prototype and records the additional controls required before a hosted team service or customer runner can be called production-ready. It is an engineering baseline, not an independent penetration test or a certification.
 
-The prototype has a separate metadata-only account/workspace control plane and an experimental opt-in support-runner session guard. The default support application remains loopback-only. The experimental guard does not provide row-level tenant isolation, UI token exchange, persisted actor attribution, or a fresh authorization check before an external write. Do not use it as a hosted multi-tenant service or with real customer ticket content.
+The prototype has a separate metadata-only account/workspace control plane and an experimental opt-in support-runner session guard. The default support application remains loopback-only. When enabled, the support UI can exchange OIDC sign-in for a short-lived runner session and persist pseudonymous actors on approval/publication events. The experimental path does not provide row-level tenant isolation, workspace switching, or a fresh authorization check before an external write. Do not use it as a hosted multi-tenant service or with real customer ticket content.
 
 ## Assets
 
@@ -29,7 +29,7 @@ The prototype has a separate metadata-only account/workspace control plane and a
 
 | Threat | Current control | Remaining requirement before production |
 |---|---|---|
-| Remote caller reaches unauthenticated local APIs | Loopback hostname and client-address checks by default; optional per-request runner-session authentication, hostname/origin allowlists, and route role matrix | Add UI token exchange, trusted ingress design, end-to-end remote deployment tests, workspace-scoped data access, and authenticated actor persistence before hosted use |
+| Remote caller reaches unauthenticated local APIs | Loopback hostname and client-address checks by default; optional support UI OIDC-to-runner session exchange, per-request runner-session authentication, hostname/origin allowlists, and route role matrix | Add workspace switching and data scoping, trusted ingress design, end-to-end remote deployment tests, and a fresh authorization check before external writes |
 | Stale browser tab overwrites a newer workflow draft | Revision check on save/publish; fork conflict returns HTTP 409 with a stable error code and current revision | Add multi-client concurrency tests against the production database and expose conflict recovery in every client |
 | Published version changes after review | Immutable serialized version and content hash; edits start a new draft | Sign or otherwise protect release provenance as the deployment model requires; retain immutable version history under tenant authorization |
 | Workflow smuggles credentials or arbitrary tools | Per-node config allowlists, sensitive configuration-key rejection, explicit read-only agent-tool allowlist, finite JSON validation, and a compiler that rejects all tools except approved knowledge search | Add secret-value scanning and managed secret references; independently review the complete runner tool dispatch before expanding execution beyond the starter graph |
