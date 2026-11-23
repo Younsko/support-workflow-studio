@@ -224,6 +224,7 @@ Object.assign(french, {
   'Enrolled runner ID': 'ID du runner enrôlé',
   'Not configured on this runner': 'Non configuré sur ce runner',
   'One-time runner enrollment credential': 'Identifiant d’enrôlement ponctuel du runner',
+  'Set SUPPORT_CONTROL_PLANE_API_URL and SUPPORT_RUNNER_ID in this runner’s local deployment configuration, then restart it. An Owner or Admin can issue the one-time credential in the workspace console.': 'Définissez SUPPORT_CONTROL_PLANE_API_URL et SUPPORT_RUNNER_ID dans la configuration locale de déploiement de ce runner, puis redémarrez-le. Un propriétaire ou administrateur peut créer l’identifiant ponctuel dans la console de l’espace.',
   'Credential saved locally — leave blank to keep': 'Identifiant enregistré localement — laissez vide pour le conserver',
   'Paste the credential issued by the control plane': 'Collez l’identifiant délivré par le plan de contrôle',
   'Disconnect this runner from the control plane': 'Déconnecter ce runner du plan de contrôle',
