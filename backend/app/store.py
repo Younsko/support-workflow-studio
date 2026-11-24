@@ -129,6 +129,20 @@ class WorkflowStateStore(Protocol):
         elapsed_ms: int,
         recorded_at: datetime | None = None,
     ) -> None: ...
+    def checkpoint_published_run_step(
+        self,
+        *,
+        idempotency_key: str,
+        lease_owner: str,
+        run_id: str,
+        attempt: int,
+        ordinal: int,
+        stage_id: str,
+        status: str,
+        elapsed_ms: int,
+        recorded_at: datetime,
+        lease_seconds: int = 3600,
+    ) -> bool: ...
     def list_execution_steps(self, run_id: str) -> list[dict[str, object]]: ...
     def append_run_event(
         self, run_id: str, case_id: str, event_type: str,
@@ -509,6 +523,81 @@ class LocalStore:
                  (recorded_at or datetime.now(UTC)).astimezone(UTC).isoformat()),
             )
             connection.commit()
+
+    def checkpoint_published_run_step(
+        self,
+        *,
+        idempotency_key: str,
+        lease_owner: str,
+        run_id: str,
+        attempt: int,
+        ordinal: int,
+        stage_id: str,
+        status: str,
+        elapsed_ms: int,
+        recorded_at: datetime,
+        lease_seconds: int = 3600,
+    ) -> bool:
+        """Renew an active owner lease and append its stage checkpoint atomically."""
+        for value, label in (
+            (idempotency_key, "idempotency_key"),
+            (lease_owner, "lease_owner"),
+            (run_id, "run_id"),
+        ):
+            if not isinstance(value, str) or not _SAFE_RUN_ID.fullmatch(value):
+                raise ValueError(f"{label} must be a short stable identifier.")
+        if not _SAFE_RUN_ID.fullmatch(stage_id):
+            raise ValueError("stage_id must be a short stable identifier.")
+        if attempt < 1 or ordinal < 0 or elapsed_ms < 0:
+            raise ValueError("Execution step counters cannot be negative.")
+        if status not in {"complete", "review", "warning", "pending", "failed"}:
+            raise ValueError("Execution step status is unsupported.")
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600.")
+        now = recorded_at.astimezone(UTC)
+        now_value = now.isoformat()
+        lease_until = (now + timedelta(seconds=lease_seconds)).isoformat()
+        with closing(self._connect()) as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """UPDATE published_run_claims
+                       SET lease_until=?, updated_at=?
+                       WHERE idempotency_key=? AND run_id=? AND lease_owner=?
+                         AND attempt=? AND state='running' AND lease_until>?""",
+                    (
+                        lease_until,
+                        now_value,
+                        idempotency_key,
+                        run_id,
+                        lease_owner,
+                        attempt,
+                        now_value,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    connection.rollback()
+                    return False
+                connection.execute(
+                    """INSERT INTO workflow_execution_steps(
+                           run_id, attempt, ordinal, stage_id, status, elapsed_ms, recorded_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        run_id,
+                        attempt,
+                        ordinal,
+                        stage_id,
+                        status,
+                        elapsed_ms,
+                        now_value,
+                    ),
+                )
+                connection.commit()
+                return True
+            except Exception:
+                connection.rollback()
+                raise
+
 
     def list_execution_steps(self, run_id: str) -> list[dict[str, object]]:
         with closing(self._connect()) as connection:
