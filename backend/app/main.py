@@ -258,9 +258,9 @@ def _record_published_execution_stage(
     ordinal: int,
 ) -> None:
     now = datetime.now(UTC)
-    if not store.renew_published_run_claim(idempotency_key, lease_owner, now):
-        raise RuntimeError("Published workflow execution lease expired or was transferred.")
-    store.record_execution_step(
+    if not store.checkpoint_published_run_step(
+        idempotency_key=idempotency_key,
+        lease_owner=lease_owner,
         run_id=run_id,
         attempt=attempt,
         ordinal=ordinal,
@@ -268,7 +268,10 @@ def _record_published_execution_stage(
         status=stage.status,
         elapsed_ms=stage.elapsed_ms,
         recorded_at=now,
-    )
+    ):
+        raise RuntimeError("Published workflow execution lease expired or was transferred.")
+
+
 
 
 def _enabled_env(name: str) -> bool:
