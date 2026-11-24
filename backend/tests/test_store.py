@@ -293,6 +293,61 @@ def test_expired_published_run_lease_can_be_reclaimed_with_fencing(tmp_path) -> 
     store.fail_published_run_claim("request-2", "worker-new", now + timedelta(seconds=8))
 
 
+def test_published_step_checkpoint_renews_lease_and_fences_old_owner(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    now = datetime.now(UTC)
+    binding = {
+        "idempotency_key": "request-step-fence",
+        "case_id": "JSM-125",
+        "workflow_id": "support-intake",
+        "workflow_version": 1,
+        "workflow_content_hash": "f" * 64,
+        "request_fingerprint": "e" * 64,
+    }
+    original = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-FENCE123",
+        lease_owner="worker-old",
+        now=now,
+        lease_seconds=5,
+    )
+    reclaimed = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-IGNORED5",
+        lease_owner="worker-new",
+        now=now + timedelta(seconds=6),
+        lease_seconds=30,
+    )
+
+    checkpoint = {
+        "idempotency_key": binding["idempotency_key"],
+        "run_id": original["run_id"],
+        "attempt": 1,
+        "ordinal": 0,
+        "stage_id": "intake",
+        "status": "complete",
+        "elapsed_ms": 20,
+        "recorded_at": now + timedelta(seconds=7),
+    }
+    assert reclaimed["attempt"] == 2
+    assert store.checkpoint_published_run_step(
+        **checkpoint,
+        lease_owner="worker-old",
+    ) is False
+    assert store.list_execution_steps(str(original["run_id"])) == []
+
+    assert store.checkpoint_published_run_step(
+        **{**checkpoint, "attempt": 2},
+        lease_owner="worker-new",
+    ) is True
+    steps = store.list_execution_steps(str(original["run_id"]))
+    assert len(steps) == 1
+    assert steps[0]["attempt"] == 2
+    assert steps[0]["stage_id"] == "intake"
+
+
+
+
 def test_old_published_claim_schema_migrates_request_fingerprint(tmp_path) -> None:
     database = tmp_path / "legacy-state.sqlite3"
     with sqlite3.connect(database) as connection:
