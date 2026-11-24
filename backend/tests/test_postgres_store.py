@@ -126,6 +126,53 @@ def test_postgres_ticket_reply_claim_serializes_workers_and_replays_success(
     }
 
 
+def test_postgres_step_checkpoint_renews_lease_and_fences_old_owner(
+    store: PostgresStore,
+) -> None:
+    now = datetime.now(UTC)
+    original = _claim(store, now=now, owner="checkpoint-old")
+    reclaimed = store.claim_published_run(
+        idempotency_key="request-001",
+        proposed_run_id="RUN-IGNORED9",
+        case_id="JSM-123",
+        workflow_id="support-intake",
+        workflow_version=2,
+        workflow_content_hash="a" * 64,
+        request_fingerprint="b" * 64,
+        lease_owner="checkpoint-new",
+        now=now + timedelta(seconds=11),
+        lease_seconds=30,
+    )
+    checkpoint = {
+        "idempotency_key": "request-001",
+        "run_id": original["run_id"],
+        "ordinal": 0,
+        "stage_id": "intake",
+        "status": "complete",
+        "elapsed_ms": 20,
+        "recorded_at": now + timedelta(seconds=12),
+    }
+
+    assert reclaimed["attempt"] == 2
+    assert store.checkpoint_published_run_step(
+        **checkpoint,
+        attempt=1,
+        lease_owner="checkpoint-old",
+    ) is False
+    assert store.list_execution_steps(str(original["run_id"])) == []
+    assert store.checkpoint_published_run_step(
+        **checkpoint,
+        attempt=2,
+        lease_owner="checkpoint-new",
+    ) is True
+    steps = store.list_execution_steps(str(original["run_id"]))
+    assert len(steps) == 1
+    assert steps[0]["attempt"] == 2
+    assert steps[0]["stage_id"] == "intake"
+
+
+
+
 def test_configured_store_selects_postgres_when_url_is_set(
     store: PostgresStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
