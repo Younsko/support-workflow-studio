@@ -62,6 +62,56 @@ def test_local_store_is_immutably_bound_to_one_workspace_runner(tmp_path) -> Non
         store.bind_runner_identity("workspace", runner_id)
 
 
+def test_ticket_reply_claim_allows_one_attempt_and_recovers_published_result(tmp_path) -> None:
+    database = tmp_path / "state.sqlite3"
+    store = LocalStore(database)
+    now = datetime.now(UTC)
+    args = {
+        "run_id": "RUN-REPLY123",
+        "case_id": "JSM-123",
+        "request_fingerprint": "a" * 64,
+        "now": now,
+    }
+
+    assert store.claim_ticket_reply(**args) == {"state": "acquired"}
+    assert LocalStore(database).claim_ticket_reply(**args) == {"state": "unknown"}
+
+    store.complete_ticket_reply(
+        run_id=args["run_id"],
+        request_fingerprint=args["request_fingerprint"],
+        comment_id="comment-123",
+    )
+    assert store.claim_ticket_reply(**args) == {
+        "state": "published",
+        "comment_id": "comment-123",
+    }
+
+    with pytest.raises(ValueError, match="different Jira reply claim"):
+        store.claim_ticket_reply(**{**args, "request_fingerprint": "b" * 64})
+
+
+def test_ticket_reply_claim_serializes_competing_processes(tmp_path) -> None:
+    database = tmp_path / "state.sqlite3"
+    now = datetime.now(UTC)
+
+    def claim(_index: int) -> str:
+        result = LocalStore(database).claim_ticket_reply(
+            run_id="RUN-RACE123",
+            case_id="JSM-456",
+            request_fingerprint="c" * 64,
+            now=now,
+        )
+        return str(result["state"])
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        states = list(pool.map(claim, range(16)))
+
+    assert states.count("acquired") == 1
+    assert states.count("unknown") == 15
+
+
 def test_runner_identity_is_bound_at_application_startup(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
@@ -241,6 +291,61 @@ def test_expired_published_run_lease_can_be_reclaimed_with_fencing(tmp_path) -> 
     with pytest.raises(ValueError, match="lease was lost"):
         store.save_run(_minimal_run("RUN-01020304"), execution_claim=("request-2", "worker-old"))
     store.fail_published_run_claim("request-2", "worker-new", now + timedelta(seconds=8))
+
+
+def test_published_step_checkpoint_renews_lease_and_fences_old_owner(tmp_path) -> None:
+    store = LocalStore(tmp_path / "state.sqlite3")
+    now = datetime.now(UTC)
+    binding = {
+        "idempotency_key": "request-step-fence",
+        "case_id": "JSM-125",
+        "workflow_id": "support-intake",
+        "workflow_version": 1,
+        "workflow_content_hash": "f" * 64,
+        "request_fingerprint": "e" * 64,
+    }
+    original = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-FENCE123",
+        lease_owner="worker-old",
+        now=now,
+        lease_seconds=5,
+    )
+    reclaimed = store.claim_published_run(
+        **binding,
+        proposed_run_id="RUN-IGNORED5",
+        lease_owner="worker-new",
+        now=now + timedelta(seconds=6),
+        lease_seconds=30,
+    )
+
+    checkpoint = {
+        "idempotency_key": binding["idempotency_key"],
+        "run_id": original["run_id"],
+        "attempt": 1,
+        "ordinal": 0,
+        "stage_id": "intake",
+        "status": "complete",
+        "elapsed_ms": 20,
+        "recorded_at": now + timedelta(seconds=7),
+    }
+    assert reclaimed["attempt"] == 2
+    assert store.checkpoint_published_run_step(
+        **checkpoint,
+        lease_owner="worker-old",
+    ) is False
+    assert store.list_execution_steps(str(original["run_id"])) == []
+
+    assert store.checkpoint_published_run_step(
+        **{**checkpoint, "attempt": 2},
+        lease_owner="worker-new",
+    ) is True
+    steps = store.list_execution_steps(str(original["run_id"]))
+    assert len(steps) == 1
+    assert steps[0]["attempt"] == 2
+    assert steps[0]["stage_id"] == "intake"
+
+
 
 
 def test_old_published_claim_schema_migrates_request_fingerprint(tmp_path) -> None:

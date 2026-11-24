@@ -21,6 +21,8 @@ from .store import (
     RunEventInput,
 )
 
+_SCHEMA_MIGRATION_LOCK_KEY = 0x53575352554E4E52
+
 
 class PostgresStore:
     """Postgres-backed implementation of the workflow state-store contract.
@@ -130,8 +132,20 @@ class PostgresStore:
                 id TEXT PRIMARY KEY,
                 payload JSONB NOT NULL
             )""",
+            """CREATE TABLE IF NOT EXISTS ticket_reply_claims (
+                run_id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                request_fingerprint TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN ('attempting', 'published')),
+                attempted_at TIMESTAMPTZ NOT NULL,
+                comment_id TEXT
+            )""",
         )
         with self._connect() as connection:
+            # Serialize DDL when runner workers start together after a deploy.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(%s)", (_SCHEMA_MIGRATION_LOCK_KEY,)
+            )
             for statement in statements:
                 connection.execute(statement)
             connection.execute("ALTER TABLE run_events ADD COLUMN IF NOT EXISTS actor_id TEXT")
@@ -349,6 +363,74 @@ class PostgresStore:
             )
             return cursor.rowcount == 1
 
+    def claim_ticket_reply(
+        self, *, run_id: str, case_id: str, request_fingerprint: str, now: datetime
+    ) -> dict[str, object]:
+        if not isinstance(run_id, str) or not _SAFE_RUN_ID.fullmatch(run_id):
+            raise ValueError("run_id must be a short stable identifier.")
+        if not isinstance(case_id, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", case_id):
+            raise ValueError("case_id must be a short stable identifier.")
+        if not isinstance(request_fingerprint, str) or not re.fullmatch(
+            r"[a-f0-9]{64}", request_fingerprint
+        ):
+            raise ValueError("request_fingerprint must be a SHA-256 digest.")
+        now_utc = now.astimezone(UTC)
+        with self._connect() as connection:
+            inserted = connection.execute(
+                """INSERT INTO ticket_reply_claims(
+                       run_id, case_id, request_fingerprint, state, attempted_at
+                   ) VALUES (%s, %s, %s, 'attempting', %s)
+                   ON CONFLICT(run_id) DO NOTHING RETURNING run_id""",
+                (run_id, case_id, request_fingerprint, now_utc),
+            ).fetchone()
+            if inserted is not None:
+                return {"state": "acquired"}
+            existing = connection.execute(
+                """SELECT case_id, request_fingerprint, state, comment_id
+                   FROM ticket_reply_claims WHERE run_id=%s FOR UPDATE""",
+                (run_id,),
+            ).fetchone()
+            if existing is None:
+                raise RuntimeError("Jira reply claim disappeared during acquisition.")
+            if (
+                existing["case_id"] != case_id
+                or existing["request_fingerprint"] != request_fingerprint
+            ):
+                raise ValueError("This run already has a different Jira reply claim.")
+            if existing["state"] == "published":
+                return {"state": "published", "comment_id": existing["comment_id"]}
+            return {"state": "unknown"}
+
+    def complete_ticket_reply(
+        self, *, run_id: str, request_fingerprint: str, comment_id: str
+    ) -> None:
+        if not isinstance(run_id, str) or not _SAFE_RUN_ID.fullmatch(run_id):
+            raise ValueError("run_id must be a short stable identifier.")
+        if not isinstance(request_fingerprint, str) or not re.fullmatch(
+            r"[a-f0-9]{64}", request_fingerprint
+        ):
+            raise ValueError("request_fingerprint must be a SHA-256 digest.")
+        if not isinstance(comment_id, str) or not _SAFE_RUN_ID.fullmatch(comment_id):
+            raise ValueError("comment_id must be a non-empty identifier of at most 128 characters.")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """UPDATE ticket_reply_claims SET state='published', comment_id=%s
+                   WHERE run_id=%s AND request_fingerprint=%s AND state='attempting'""",
+                (comment_id, run_id, request_fingerprint),
+            )
+            if cursor.rowcount == 1:
+                return
+            existing = connection.execute(
+                "SELECT state, comment_id FROM ticket_reply_claims WHERE run_id=%s AND request_fingerprint=%s",
+                (run_id, request_fingerprint),
+            ).fetchone()
+            if (
+                existing is None
+                or existing["state"] != "published"
+                or existing["comment_id"] != comment_id
+            ):
+                raise ValueError("Jira reply claim is missing or no longer writable.")
+
     def record_execution_step(
         self,
         *,
@@ -381,6 +463,73 @@ class PostgresStore:
                     (recorded_at or datetime.now(UTC)).astimezone(UTC),
                 ),
             )
+
+    def checkpoint_published_run_step(
+        self,
+        *,
+        idempotency_key: str,
+        lease_owner: str,
+        run_id: str,
+        attempt: int,
+        ordinal: int,
+        stage_id: str,
+        status: str,
+        elapsed_ms: int,
+        recorded_at: datetime,
+        lease_seconds: int = 3600,
+    ) -> bool:
+        """Renew an active owner lease and append its stage checkpoint atomically."""
+        for value, label in (
+            (idempotency_key, "idempotency_key"),
+            (lease_owner, "lease_owner"),
+            (run_id, "run_id"),
+        ):
+            if not isinstance(value, str) or not _SAFE_RUN_ID.fullmatch(value):
+                raise ValueError(f"{label} must be a short stable identifier.")
+        if not _SAFE_RUN_ID.fullmatch(stage_id):
+            raise ValueError("stage_id must be a short stable identifier.")
+        if attempt < 1 or ordinal < 0 or elapsed_ms < 0:
+            raise ValueError("Execution step counters cannot be negative.")
+        if status not in {"complete", "review", "warning", "pending", "failed"}:
+            raise ValueError("Execution step status is unsupported.")
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600.")
+        now = recorded_at.astimezone(UTC)
+        lease_until = now + timedelta(seconds=lease_seconds)
+        with self._connect() as connection:
+            renewed = connection.execute(
+                """UPDATE published_run_claims
+                   SET lease_until=%s, updated_at=%s
+                   WHERE idempotency_key=%s AND run_id=%s AND lease_owner=%s
+                     AND attempt=%s AND state='running' AND lease_until>%s""",
+                (
+                    lease_until,
+                    now,
+                    idempotency_key,
+                    run_id,
+                    lease_owner,
+                    attempt,
+                    now,
+                ),
+            )
+            if renewed.rowcount != 1:
+                return False
+            connection.execute(
+                """INSERT INTO workflow_execution_steps(
+                       run_id, attempt, ordinal, stage_id, status, elapsed_ms, recorded_at
+                   ) VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    run_id,
+                    attempt,
+                    ordinal,
+                    stage_id,
+                    status,
+                    elapsed_ms,
+                    now,
+                ),
+            )
+            return True
+
 
     def list_execution_steps(self, run_id: str) -> list[dict[str, object]]:
         with self._connect() as connection:

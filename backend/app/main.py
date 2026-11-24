@@ -57,6 +57,13 @@ from .runner_auth import (
     authenticate_bearer,
     required_roles,
 )
+from .runner_heartbeat import (
+    RunnerHeartbeatConfig,
+    RunnerHeartbeatConfigurationError,
+    heartbeat_loop,
+    heartbeat_once,
+    initial_heartbeat_state,
+)
 from .runner_identity import RunnerIdentity
 from .schemas import (
     CaseRecord,
@@ -110,6 +117,9 @@ class SetupRequest(BaseModel):
     model_api_key: str = Field(default="", max_length=2000, repr=False)
     clear_model_api_key: bool = False
     external_model_disclosure_accepted: bool | None = None
+    runner_heartbeat_token: str = Field(default="", max_length=128, repr=False)
+    clear_runner_heartbeat_token: bool = False
+    runner_heartbeat_interval_seconds: int = Field(default=60, ge=30, le=3600)
 
 
 class JiraDiscoveryRequest(BaseModel):
@@ -137,6 +147,7 @@ JIRA_MONITOR_STATE: dict[str, object] = {
     "page_cap_reached": False,
     "auto_triage_enabled": False,
 }
+RUNNER_HEARTBEAT_STATE = initial_heartbeat_state()
 JIRA_SEEN_KEYS: set[str] = set()
 JIRA_PENDING_TRIAGE_ATTEMPTS: dict[str, int] = {}
 JIRA_LOCAL_TAGS: dict[str, set[str]] = {}
@@ -158,6 +169,8 @@ def _persist_local_setup(
     remove_model_api_key: bool = False,
     confluence_api_token: str = "",
     remove_confluence_api_token: bool = False,
+    runner_heartbeat_token: str = "",
+    remove_runner_heartbeat_token: bool = False,
 ) -> None:
     """Atomically update ignored local configuration, then apply it in-process."""
     env_path = _configured_env_path()
@@ -184,6 +197,15 @@ def _persist_local_setup(
             set_key(str(staged_path), "CONFLUENCE_API_TOKEN", confluence_api_token, quote_mode="always")
         elif remove_confluence_api_token:
             unset_key(str(staged_path), "CONFLUENCE_API_TOKEN")
+        if runner_heartbeat_token:
+            set_key(
+                str(staged_path),
+                "SUPPORT_CONTROL_PLANE_RUNNER_TOKEN",
+                runner_heartbeat_token,
+                quote_mode="always",
+            )
+        elif remove_runner_heartbeat_token:
+            unset_key(str(staged_path), "SUPPORT_CONTROL_PLANE_RUNNER_TOKEN")
         if os.name != "nt":
             staged_path.chmod(0o600)
         os.replace(staged_path, env_path)
@@ -205,6 +227,10 @@ def _persist_local_setup(
         os.environ["CONFLUENCE_API_TOKEN"] = confluence_api_token
     elif remove_confluence_api_token:
         os.environ.pop("CONFLUENCE_API_TOKEN", None)
+    if runner_heartbeat_token:
+        os.environ["SUPPORT_CONTROL_PLANE_RUNNER_TOKEN"] = runner_heartbeat_token
+    elif remove_runner_heartbeat_token:
+        os.environ.pop("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", None)
 
 
 def _save_case(case: CaseRecord) -> None:
@@ -232,9 +258,9 @@ def _record_published_execution_stage(
     ordinal: int,
 ) -> None:
     now = datetime.now(UTC)
-    if not store.renew_published_run_claim(idempotency_key, lease_owner, now):
-        raise RuntimeError("Published workflow execution lease expired or was transferred.")
-    store.record_execution_step(
+    if not store.checkpoint_published_run_step(
+        idempotency_key=idempotency_key,
+        lease_owner=lease_owner,
         run_id=run_id,
         attempt=attempt,
         ordinal=ordinal,
@@ -242,7 +268,10 @@ def _record_published_execution_stage(
         status=stage.status,
         elapsed_ms=stage.elapsed_ms,
         recorded_at=now,
-    )
+    ):
+        raise RuntimeError("Published workflow execution lease expired or was transferred.")
+
+
 
 
 def _enabled_env(name: str) -> bool:
@@ -650,6 +679,7 @@ async def lifespan(_: FastAPI):
     _validate_private_local_mode()
     RunnerAuthConfig.from_env()
     monitor: asyncio.Task[None] | None = None
+    runner_heartbeat: asyncio.Task[None] | None = None
     try:
         STATE_STORE = configured_store()
         runner_identity = RunnerIdentity.from_env()
@@ -664,12 +694,17 @@ async def lifespan(_: FastAPI):
         RUNS.update(STATE_STORE.load_runs())
         _restore_monitor_checkpoint(STATE_STORE.load_monitor_state())
         monitor = asyncio.create_task(_jira_monitor_loop())
+        runner_heartbeat = asyncio.create_task(
+            heartbeat_loop(RUNNER_HEARTBEAT_STATE)
+        )
         yield
     finally:
-        if monitor is not None:
-            monitor.cancel()
+        for task in (monitor, runner_heartbeat):
+            if task is None:
+                continue
+            task.cancel()
             try:
-                await monitor
+                await task
             except asyncio.CancelledError:
                 pass
         STATE_STORE = None
@@ -993,7 +1028,22 @@ async def get_setup() -> dict[str, object]:
         "model_api_key_configured": bool(model.api_key),
         "external_model_disclosure_accepted": model.external_ticket_inference_allowed,
         "private_local_mode": _private_local_mode_enabled(),
+        "control_plane_api_url": os.getenv("SUPPORT_CONTROL_PLANE_API_URL", ""),
+        "runner_id": os.getenv("SUPPORT_RUNNER_ID", ""),
+        "runner_heartbeat_token_configured": bool(
+            os.getenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", "").strip()
+        ),
+        "runner_heartbeat_interval_seconds": _runner_heartbeat_interval_seconds(),
+        "runner_heartbeat": dict(RUNNER_HEARTBEAT_STATE),
     }
+
+
+def _runner_heartbeat_interval_seconds() -> int:
+    try:
+        interval = int(os.getenv("SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS", "60"))
+    except ValueError:
+        return 60
+    return interval if 30 <= interval <= 3600 else 60
 
 
 def _validated_model_setup(settings: SetupRequest) -> tuple[dict[str, str], str, bool]:
@@ -1257,6 +1307,7 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         settings.model_name or "",
         settings.model_base_url or "",
         settings.model_api_key,
+        settings.runner_heartbeat_token,
     )
     if any(
         ord(character) < 32 or ord(character) == 127
@@ -1273,6 +1324,36 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         or knowledge_provider == "confluence"
     ):
         raise HTTPException(status_code=403, detail="External connections are disabled while PRIVATE_LOCAL_MODE is active.")
+
+    if settings.clear_runner_heartbeat_token and settings.runner_heartbeat_token.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Choose either a new runner credential or disconnect the current runner.",
+        )
+    heartbeat_config: RunnerHeartbeatConfig | None = None
+    if settings.runner_heartbeat_token.strip():
+        try:
+            heartbeat_config = RunnerHeartbeatConfig.from_values(
+                os.getenv("SUPPORT_CONTROL_PLANE_API_URL", ""),
+                os.getenv("SUPPORT_RUNNER_ID", ""),
+                settings.runner_heartbeat_token,
+                settings.runner_heartbeat_interval_seconds,
+            )
+        except RunnerHeartbeatConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif (
+        settings.runner_heartbeat_interval_seconds != _runner_heartbeat_interval_seconds()
+        and os.getenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", "").strip()
+    ):
+        try:
+            heartbeat_config = RunnerHeartbeatConfig.from_values(
+                os.getenv("SUPPORT_CONTROL_PLANE_API_URL", ""),
+                os.getenv("SUPPORT_RUNNER_ID", ""),
+                os.getenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", ""),
+                settings.runner_heartbeat_interval_seconds,
+            )
+        except RunnerHeartbeatConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     url = settings.jira_base_url.strip().rstrip("/")
     email = settings.jira_email.strip()
@@ -1354,6 +1435,9 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "SUPPORT_N1_KEYWORDS": settings.n1_keywords.strip(),
         "SUPPORT_N3_PLUS_KEYWORDS": settings.n3_plus_keywords.strip(),
         "SUPPORT_N3_KEYWORDS": settings.n3_keywords.strip(),
+        "SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS": str(
+            settings.runner_heartbeat_interval_seconds
+        ),
     }
     env_values.update(model_env_values)
     try:
@@ -1366,9 +1450,16 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
                 remove_model_api_key=remove_model_api_key,
                 confluence_api_token=confluence_token,
                 remove_confluence_api_token=knowledge_provider != "confluence",
+                runner_heartbeat_token=settings.runner_heartbeat_token.strip(),
+                remove_runner_heartbeat_token=settings.clear_runner_heartbeat_token,
             )
     except (OSError, UnicodeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="Local setup could not be saved. Check that the project folder is writable.") from exc
+
+    if settings.clear_runner_heartbeat_token:
+        RUNNER_HEARTBEAT_STATE.update(initial_heartbeat_state())
+    elif settings.runner_heartbeat_token.strip() and heartbeat_config is not None:
+        await heartbeat_once(heartbeat_config, RUNNER_HEARTBEAT_STATE)
 
     return {
         "saved": True,
@@ -1378,6 +1469,7 @@ async def save_setup(settings: SetupRequest) -> dict[str, object]:
         "confluence_connection": "configured_not_checked" if knowledge_provider == "confluence" else "not_selected",
         "model_provider": model_env_values.get("MODEL_PROVIDER", ProviderConfig.from_env().provider),
         "model_name": model_env_values.get("MODEL_NAME", ProviderConfig.from_env().model),
+        "runner_heartbeat": dict(RUNNER_HEARTBEAT_STATE),
         "external_model_disclosure_accepted": model_env_values.get(
             "ALLOW_EXTERNAL_TICKET_INFERENCE",
             str(ProviderConfig.from_env().external_ticket_inference_allowed).lower(),
@@ -1418,6 +1510,7 @@ async def integrations_status() -> dict[str, object]:
             **JIRA_MONITOR_STATE,
             "interval_seconds": _monitor_interval_seconds(),
         },
+        "runner_heartbeat": dict(RUNNER_HEARTBEAT_STATE),
     }
 
 
@@ -1849,11 +1942,15 @@ async def _publish_ticket_reply_locked(
             detail="A human must approve the 9/10+ draft before publishing",
         )
     if result.ticket_comment_published:
-        raise HTTPException(status_code=409, detail="This reply was already published")
-    if result.ticket_comment_outcome == "unknown":
-        raise HTTPException(
-            status_code=409, detail="Check the ticket manually before any retry"
-        )
+        if runner_auth_config is not None:
+            await _recheck_external_write_authorization(
+                runner_auth_config, runner_session_token
+            )
+        return {
+            "published": True,
+            "comment_id": result.ticket_comment_id,
+            "public": True,
+        }
     case = CASES.get(result.case_id)
     if (
         case is None
@@ -1864,8 +1961,9 @@ async def _publish_ticket_reply_locked(
             status_code=409,
             detail="This case is not linked to a Jira Service Management request",
         )
+    adapter = create_itsm_adapter("jira-service-management")
     try:
-        latest_details = await create_itsm_adapter("jira-service-management").get_request_details(case.external_key)
+        latest_details = await adapter.get_request_details(case.external_key)
     except ITSMConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ITSMRequestError as exc:
@@ -1880,9 +1978,49 @@ async def _publish_ticket_reply_locked(
             runner_auth_config, runner_session_token
         )
         actor_metadata = {**(actor_metadata or {}), "actor_role": current_role}
+    store = STATE_STORE or configured_store()
+    draft_fingerprint = hashlib.sha256(result.draft.encode("utf-8")).hexdigest()
+    request_fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "run_id": result.id,
+                "case_id": result.case_id,
+                "external_key": case.external_key,
+                "approval_version": result.approval_version,
+                "draft_fingerprint": draft_fingerprint,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    try:
+        reply_claim = store.claim_ticket_reply(
+            run_id=result.id,
+            case_id=result.case_id,
+            request_fingerprint=request_fingerprint,
+            now=datetime.now(UTC),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="This run already has a different Jira reply attempt.") from exc
+    if reply_claim["state"] == "published":
+        result.ticket_comment_published = True
+        result.ticket_comment_id = str(reply_claim.get("comment_id") or "") or None
+        result.ticket_comment_outcome = "published"
+        store.save_run(result)
+        return {
+            "published": True,
+            "comment_id": result.ticket_comment_id,
+            "public": True,
+        }
+    if reply_claim["state"] != "acquired" or result.ticket_comment_outcome == "unknown":
+        result.ticket_comment_outcome = "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail="A Jira reply attempt already exists for this run. Check the ticket manually before taking further action.",
+        )
     # An interrupted request is ambiguous. Keep this run closed to retries.
     result.ticket_comment_outcome = "unknown"
-    _save_run(
+    store.save_run(
         result,
         audit_event=(
             result.id,
@@ -1898,22 +2036,22 @@ async def _publish_ticket_reply_locked(
         ),
     )
     try:
-        posted = await create_itsm_adapter("jira-service-management").publish_public_reply(case.external_key, result.draft)
+        posted = await adapter.publish_public_reply(case.external_key, result.draft)
     except ITSMConfigurationError as exc:
-        result.ticket_comment_outcome = "failed"
-        _save_run(
+        result.ticket_comment_outcome = "unknown"
+        store.save_run(
             result,
             audit_event=(
                 result.id,
                 result.case_id,
-                "publish.failed",
-                {"outcome": "failed", **(actor_metadata or {})},
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
             ),
         )
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail="Jira reply outcome could not be confirmed; inspect the ticket before retrying.") from exc
     except ITSMOutcomeUnknown as exc:
         result.ticket_comment_outcome = "unknown"
-        _save_run(
+        store.save_run(
             result,
             audit_event=(
                 result.id,
@@ -1924,21 +2062,40 @@ async def _publish_ticket_reply_locked(
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ITSMRequestError as exc:
-        result.ticket_comment_outcome = "failed"
-        _save_run(
+        result.ticket_comment_outcome = "unknown"
+        store.save_run(
             result,
             audit_event=(
                 result.id,
                 result.case_id,
-                "publish.failed",
-                {"outcome": "failed", **(actor_metadata or {})},
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
             ),
         )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail="Jira reply outcome could not be confirmed; inspect the ticket before retrying.") from exc
+    raw_comment_id = posted.get("id")
+    comment_id = str(raw_comment_id).strip() if isinstance(raw_comment_id, (str, int)) else ""
+    if not comment_id:
+        result.ticket_comment_outcome = "unknown"
+        store.save_run(
+            result,
+            audit_event=(
+                result.id,
+                result.case_id,
+                "publish.unknown",
+                {"outcome": "unknown", **(actor_metadata or {})},
+            ),
+        )
+        raise HTTPException(status_code=502, detail="Jira may have accepted the reply but returned no comment ID; inspect the ticket manually.")
+    store.complete_ticket_reply(
+        run_id=result.id,
+        request_fingerprint=request_fingerprint,
+        comment_id=comment_id,
+    )
     result.ticket_comment_published = True
-    result.ticket_comment_id = posted.get("id")
+    result.ticket_comment_id = comment_id
     result.ticket_comment_outcome = "published"
-    _save_run(
+    store.save_run(
         result,
         audit_event=(
             result.id,
@@ -1948,6 +2105,7 @@ async def _publish_ticket_reply_locked(
         ),
     )
     return {"published": True, "comment_id": result.ticket_comment_id, "public": True}
+
 
 
 async def _recheck_external_write_authorization(

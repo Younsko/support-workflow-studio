@@ -21,6 +21,7 @@ WORKSPACE_ROLES = frozenset(
 )
 _SAFE_WORKSPACE_ID = re.compile(r"^[a-f0-9]{32}$")
 CURRENT_SCHEMA_VERSION = 3
+_SCHEMA_MIGRATION_LOCK_KEY = 0x53575343504D4554
 
 
 class WorkspaceNotFound(LookupError):
@@ -145,6 +146,10 @@ class PostgresControlPlaneStore:
             ),
         }
         with self._connect() as connection:
+            # Serialize DDL when control-plane instances start together.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(%s)", (_SCHEMA_MIGRATION_LOCK_KEY,)
+            )
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS control_plane_schema_migrations (
                     version INTEGER PRIMARY KEY,

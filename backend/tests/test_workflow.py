@@ -417,6 +417,21 @@ def test_ticket_comment_requires_two_separate_human_actions(monkeypatch, tmp_pat
     assert sent.status_code == 200
     assert sent.json()["public"] is True
     assert published and published[0][0] == "DEMO-81"
+    from app import main
+
+    stale_worker_copy = main.RUNS[run["id"]].model_copy(
+        update={
+            "ticket_comment_published": False,
+            "ticket_comment_id": None,
+            "ticket_comment_outcome": "not_started",
+        }
+    )
+    main.RUNS[run["id"]] = stale_worker_copy
+    replayed = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
+    assert replayed.status_code == 200
+    assert replayed.json()["comment_id"] == "synthetic-comment-1"
+    assert len(published) == 1
+    assert main.RUNS[run["id"]].ticket_comment_published is True
     events = client.get(f"/api/workflows/{run['id']}/events").json()
     assert [event["event_type"] for event in events] == [
         "workflow.started",
@@ -1121,6 +1136,25 @@ def test_setup_status_reports_token_presence_without_returning_token(monkeypatch
     assert response.json()["jira_token_configured"] is True
     assert secret not in response.text
     assert "jira_api_token" not in response.json()
+
+
+def test_setup_status_reports_runner_heartbeat_without_returning_credential(monkeypatch) -> None:
+    secret = "runner-heartbeat-test-credential-" + "x" * 32
+    monkeypatch.setenv("SUPPORT_CONTROL_PLANE_API_URL", "https://control.example.test")
+    monkeypatch.setenv("SUPPORT_RUNNER_ID", "a" * 32)
+    monkeypatch.setenv("SUPPORT_CONTROL_PLANE_RUNNER_TOKEN", secret)
+    monkeypatch.setenv("SUPPORT_RUNNER_HEARTBEAT_INTERVAL_SECONDS", "120")
+
+    response = client.get("/api/setup")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["control_plane_api_url"] == "https://control.example.test"
+    assert payload["runner_id"] == "a" * 32
+    assert payload["runner_heartbeat_token_configured"] is True
+    assert payload["runner_heartbeat_interval_seconds"] == 120
+    assert secret not in response.text
+    assert "runner_heartbeat_token" not in payload
 
 
 def test_setup_status_reports_model_configuration_without_returning_key(monkeypatch) -> None:
@@ -1866,7 +1900,8 @@ def test_approved_ticket_reply_publishes_only_after_approval_and_once(monkeypatc
     assert published == [("DEMO-84", reviewed_draft)]
 
     duplicate_publish = client.post(f"/api/workflows/{run['id']}/publish-ticket-reply")
-    assert duplicate_publish.status_code == 409
+    assert duplicate_publish.status_code == 200
+    assert duplicate_publish.json() == publish.json()
     assert len(published) == 1
 
 
