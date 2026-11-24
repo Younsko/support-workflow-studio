@@ -464,6 +464,73 @@ class PostgresStore:
                 ),
             )
 
+    def checkpoint_published_run_step(
+        self,
+        *,
+        idempotency_key: str,
+        lease_owner: str,
+        run_id: str,
+        attempt: int,
+        ordinal: int,
+        stage_id: str,
+        status: str,
+        elapsed_ms: int,
+        recorded_at: datetime,
+        lease_seconds: int = 3600,
+    ) -> bool:
+        """Renew an active owner lease and append its stage checkpoint atomically."""
+        for value, label in (
+            (idempotency_key, "idempotency_key"),
+            (lease_owner, "lease_owner"),
+            (run_id, "run_id"),
+        ):
+            if not isinstance(value, str) or not _SAFE_RUN_ID.fullmatch(value):
+                raise ValueError(f"{label} must be a short stable identifier.")
+        if not _SAFE_RUN_ID.fullmatch(stage_id):
+            raise ValueError("stage_id must be a short stable identifier.")
+        if attempt < 1 or ordinal < 0 or elapsed_ms < 0:
+            raise ValueError("Execution step counters cannot be negative.")
+        if status not in {"complete", "review", "warning", "pending", "failed"}:
+            raise ValueError("Execution step status is unsupported.")
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600.")
+        now = recorded_at.astimezone(UTC)
+        lease_until = now + timedelta(seconds=lease_seconds)
+        with self._connect() as connection:
+            renewed = connection.execute(
+                """UPDATE published_run_claims
+                   SET lease_until=%s, updated_at=%s
+                   WHERE idempotency_key=%s AND run_id=%s AND lease_owner=%s
+                     AND attempt=%s AND state='running' AND lease_until>%s""",
+                (
+                    lease_until,
+                    now,
+                    idempotency_key,
+                    run_id,
+                    lease_owner,
+                    attempt,
+                    now,
+                ),
+            )
+            if renewed.rowcount != 1:
+                return False
+            connection.execute(
+                """INSERT INTO workflow_execution_steps(
+                       run_id, attempt, ordinal, stage_id, status, elapsed_ms, recorded_at
+                   ) VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    run_id,
+                    attempt,
+                    ordinal,
+                    stage_id,
+                    status,
+                    elapsed_ms,
+                    now,
+                ),
+            )
+            return True
+
+
     def list_execution_steps(self, run_id: str) -> list[dict[str, object]]:
         with self._connect() as connection:
             rows = connection.execute(
